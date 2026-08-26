@@ -321,11 +321,32 @@ export default function AdminTabs({
                         const rawAmount = Number(tx.amount || 0)
                         const isCapital = rawType.includes('CAPITAL') || rawType === 'DEPOSIT'
                         const isTrade = rawType.includes('TRADE')
-                        const isPositive = isCapital ? true : rawAmount >= 0
+                        const isLoss = isTrade ? rawAmount < 0 : rawType.includes('WITHDRAWAL')
+                        const isWin = isTrade && rawAmount >= 0
 
                         let typeLabel = rawType
                         if (isCapital) typeLabel = 'Capital Injection (Personal -> Fund)'
-                        else if (isTrade) typeLabel = `Hedge Trade (${rawType.replace('TRADE_', '')})`
+                        else if (isWin) typeLabel = `Hedge Win (${rawType.replace('TRADE_', '')})`
+                        else if (isLoss && isTrade) typeLabel = `Trade Loss (${rawType.replace('TRADE_', '')})`
+                        else if (rawType.includes('WITHDRAWAL')) typeLabel = 'Capital Withdrawal'
+
+                        // 3-Color Financial System:
+                        // Capital -> Amber / Gold
+                        // Win Trade -> Emerald Green
+                        // Loss Trade / Withdrawal -> Red
+                        const badgeStyle = isCapital
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          : isWin
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-red-500/20 text-red-300 border border-red-500/40'
+
+                        const amountStyle = isCapital
+                          ? 'text-amber-400'
+                          : isWin
+                          ? 'text-emerald-400'
+                          : 'text-red-400'
+
+                        const signPrefix = isCapital ? '' : isWin ? '+' : '-'
 
                         return (
                           <tr key={tx.id || idx} className="hover:bg-white/5 transition-colors">
@@ -333,22 +354,16 @@ export default function AdminTabs({
                               {new Date(tx.created_at || Date.now()).toLocaleString()}
                             </td>
                             <td className="py-4 px-6">
-                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide ${
-                                isCapital
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  : isTrade
-                                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                              }`}>
-                                {isPositive ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDownRight className="w-3.5 h-3.5 text-red-400" />}
+                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide ${badgeStyle}`}>
+                                {isCapital ? <ArrowUpRight className="w-3.5 h-3.5 text-amber-400" /> : isWin ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDownRight className="w-3.5 h-3.5 text-red-400" />}
                                 {typeLabel}
                               </span>
                             </td>
                             <td className="py-4 px-6 font-medium text-white">
                               {tx.user_name || tx.user_id || 'System Client'}
                             </td>
-                            <td className={`py-4 px-6 font-mono font-bold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {isPositive ? '+' : '-'}${Math.abs(rawAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <td className={`py-4 px-6 font-mono font-bold ${amountStyle}`}>
+                              {signPrefix}${Math.abs(rawAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td className="py-4 px-6">
                               <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">

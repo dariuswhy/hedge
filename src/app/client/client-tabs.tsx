@@ -230,24 +230,51 @@ export default function ClientTabs({
                       </tr>
                     ) : (
                       userTransactions.map((tx: any, idx: number) => {
-                        const isDeposit = tx.type === 'deposit'
+                        const rawType = (tx.type || '').toUpperCase()
+                        const rawAmount = Number(tx.amount || 0)
+                        
+                        const isCapital = rawType.includes('CAPITAL') || rawType === 'DEPOSIT'
+                        const isTrade = rawType.includes('TRADE')
+                        const isLoss = isTrade ? rawAmount < 0 : rawType.includes('WITHDRAWAL')
+                        const isWin = isTrade && rawAmount >= 0
+
+                        let labelText = rawType
+                        if (isCapital) labelText = 'Capital Injection (Personal -> Fund)'
+                        else if (isWin) labelText = `Hedge Win (${rawType.replace('TRADE_', '')})`
+                        else if (isLoss && isTrade) labelText = `Trade Loss (${rawType.replace('TRADE_', '')})`
+                        else if (rawType.includes('WITHDRAWAL')) labelText = 'Capital Withdrawal'
+
+                        // 3-Color Financial System:
+                        // Capital -> Amber / Gold
+                        // Win Trade -> Emerald Green
+                        // Loss Trade / Withdrawal -> Red
+                        const badgeStyle = isCapital
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          : isWin
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-red-500/20 text-red-300 border border-red-500/40'
+
+                        const amountStyle = isCapital
+                          ? 'text-amber-400'
+                          : isWin
+                          ? 'text-emerald-400'
+                          : 'text-red-400'
+
+                        const signPrefix = isCapital ? '' : isWin ? '+' : '-'
+
                         return (
                           <tr key={tx.id || idx} className="hover:bg-white/5 transition-colors">
                             <td className="py-4 px-6 font-mono text-xs text-gray-400">
                               {new Date(tx.created_at || Date.now()).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                             </td>
                             <td className="py-4 px-6">
-                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${
-                                isDeposit
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                              }`}>
-                                {isDeposit ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                                {tx.type}
+                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide ${badgeStyle}`}>
+                                {isCapital ? <ArrowUpRight className="w-3.5 h-3.5 text-amber-400" /> : isWin ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDownRight className="w-3.5 h-3.5 text-red-400" />}
+                                {labelText}
                               </span>
                             </td>
-                            <td className={`py-4 px-6 font-mono font-bold ${isDeposit ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {isDeposit ? '+' : '-'}${Math.abs(Number(tx.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <td className={`py-4 px-6 font-mono font-bold ${amountStyle}`}>
+                              {signPrefix}${Math.abs(rawAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td className="py-4 px-6">
                               <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
