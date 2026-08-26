@@ -52,21 +52,30 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
   const [memberSortOrder, setMemberSortOrder] = useState<'asc' | 'desc'>('desc')
 
   // Merge form state (up to 4+ clients selected with individual amounts)
-  const [selectedClientAllocations, setSelectedClientAllocations] = useState<{ userId: string; amount: number }[]>([
-    { userId: clients[0]?.id || '', amount: 50000 },
-    { userId: clients[1]?.id || '', amount: 50000 },
+  const [selectedClientAllocations, setSelectedClientAllocations] = useState<{ userId: string; amount: number | string }[]>([
+    { userId: clients[0]?.id || '', amount: 25000 },
+    { userId: clients[1]?.id || '', amount: 25000 },
   ])
 
   // Valuation state
   const [newValuationInput, setNewValuationInput] = useState<string>('')
-  
-  // Status message
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const activePool = pools.find(p => p.id === selectedPoolId) || pools[0]
 
-  // Sorted member list
+  const handleOpenMergeModal = (pool: HedgePool) => {
+    setSelectedPoolId(pool.id)
+    if (pool.members && pool.members.length > 0) {
+      setSelectedClientAllocations(pool.members.map(m => ({ userId: m.user_id, amount: m.allocated_amount })))
+    } else {
+      setSelectedClientAllocations([
+        { userId: clients[0]?.id || '', amount: 25000 },
+        { userId: clients[1]?.id || '', amount: 25000 },
+      ].filter(item => Boolean(item.userId)))
+    }
+    setShowMergeModal(true)
+  }// Sorted member list
   const sortedMembers = activePool?.members ? [...activePool.members].sort((a, b) => {
     let valA = 0
     let valB = 0
@@ -116,8 +125,8 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
       'membersJson',
       JSON.stringify(
         selectedClientAllocations
-          .filter(m => m.userId && m.amount > 0)
-          .map(m => ({ userId: m.userId, allocatedAmount: m.amount }))
+          .filter(m => m.userId && Number(m.amount || 0) > 0)
+          .map(m => ({ userId: m.userId, allocatedAmount: Number(m.amount || 0) }))
       )
     )
 
@@ -694,7 +703,7 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
               <div className="space-y-3">
                 {selectedClientAllocations.map((item, index) => {
                   const clientObj = clients.find(c => c.id === item.userId)
-                  const freeCap = getUnallocatedFreeCapital(item.userId, pools, clientObj?.totalInvested || 100000)
+                  const freeCap = getUnallocatedFreeCapital(item.userId, pools, Number(clientObj?.totalInvested || 0))
                   const itemShare = mergeTotalCapital > 0 ? (Number(item.amount || 0) / mergeTotalCapital) * 100 : 0
                   return (
                     <div key={index} className="p-4 bg-black/40 border border-white/10 rounded-2xl flex flex-col gap-3">
@@ -707,11 +716,12 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
                             className="w-full px-3 py-2 bg-black/60 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
                           >
                             {clients.map(c => {
+                              const isSelectedElsewhere = selectedClientAllocations.some((alloc, i) => i !== index && alloc.userId === c.id)
                               const isAdmin = (c as any).role === 'admin' || c.email?.includes('admin') || c.email?.includes('darius')
                               const name = isAdmin ? `${c.full_name || 'Darius'} (Admin)` : (c.full_name || c.email)
                               return (
-                                <option key={c.id} value={c.id}>
-                                  {name}
+                                <option key={c.id} value={c.id} disabled={isSelectedElsewhere}>
+                                  {name} {isSelectedElsewhere ? '(Already Added)' : ''}
                                 </option>
                               )
                             })}
@@ -723,7 +733,8 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
                           <input
                             type="number"
                             value={item.amount}
-                            onChange={(e) => updateClientRow(index, 'amount', parseFloat(e.target.value) || 0)}
+                            onChange={(e) => updateClientRow(index, 'amount', e.target.value === '' ? '' : (parseFloat(e.target.value) || 0))}
+                            placeholder="0"
                             className="w-full px-3 py-2 bg-black/60 border border-white/10 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-blue-500"
                           />
                         </div>
@@ -748,7 +759,7 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
                       <div className="flex items-center gap-3 text-[11px] pt-1 border-t border-white/5">
                         <span className="text-gray-400 font-medium">Free Capital Status:</span>
                         <span className={`px-2 py-0.5 rounded-full font-mono font-semibold ${
-                          freeCap.free >= item.amount
+                          freeCap.free >= Number(item.amount || 0)
                             ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                             : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                         }`}>
