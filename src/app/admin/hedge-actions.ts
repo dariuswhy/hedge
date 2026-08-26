@@ -84,7 +84,39 @@ export async function addMembersToHedgePoolAction(state: any, formData: FormData
 
   const supabaseAdmin = createAdminClient()
 
-  // 1. Delete existing members for clean merge re-allocation
+  // 1. Failsafe Check: Verify each investor has enough free capital!
+  for (const m of membersData) {
+    const allocated = Number(m.allocatedAmount || 0)
+    if (allocated <= 0) continue
+
+    // Fetch user total invested capital
+    const { data: userCapRows } = await supabaseAdmin
+      .from('invested_capital')
+      .select('amount_invested')
+      .eq('user_id', m.userId)
+
+    const totalUserCap = userCapRows?.reduce((acc, curr) => acc + Number(curr.amount_invested), 0) || 0
+
+    // Fetch allocations in other active pools
+    const { data: otherPoolAllocations } = await supabaseAdmin
+      .from('hedge_pool_members')
+      .select('allocated_amount')
+      .eq('user_id', m.userId)
+      .neq('pool_id', poolId)
+
+    const existingAllocated = otherPoolAllocations?.reduce((acc, curr) => acc + Number(curr.allocated_amount), 0) || 0
+    const freeAvailable = Math.max(0, totalUserCap - existingAllocated)
+
+    if (allocated > freeAvailable) {
+      const { data: targetProfile } = await supabaseAdmin.from('profiles').select('full_name, email').eq('id', m.userId).single()
+      const userName = targetProfile?.full_name || targetProfile?.email || 'Investor'
+      return {
+        error: `Failsafe Capital Protection Triggered: ${userName} only has $${freeAvailable.toLocaleString()} free capital available. You cannot allocate $${allocated.toLocaleString()} into this pool. Deposit capital first under Top-Up Capital.`
+      }
+    }
+  }
+
+  // 2. Delete existing members for clean merge re-allocation
   await supabaseAdmin.from('hedge_pool_members').delete().eq('pool_id', poolId)
 
   // 2. Prepare member rows with percentage splits & initial values

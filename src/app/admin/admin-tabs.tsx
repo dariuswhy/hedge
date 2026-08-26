@@ -317,29 +317,38 @@ export default function AdminTabs({
                       </tr>
                     ) : (
                       recentTransactions.map((tx: any, idx: number) => {
-                        const isPositive = tx.type === 'deposit'
+                        const rawType = (tx.type || '').toUpperCase()
+                        const rawAmount = Number(tx.amount || 0)
+                        const isCapital = rawType.includes('CAPITAL') || rawType === 'DEPOSIT'
+                        const isTrade = rawType.includes('TRADE')
+                        const isPositive = isCapital ? true : rawAmount >= 0
+
+                        let typeLabel = rawType
+                        if (isCapital) typeLabel = 'Capital Injection (Personal -> Fund)'
+                        else if (isTrade) typeLabel = `Hedge Trade (${rawType.replace('TRADE_', '')})`
+
                         return (
                           <tr key={tx.id || idx} className="hover:bg-white/5 transition-colors">
                             <td className="py-4 px-6 font-mono text-xs text-gray-400">
                               {new Date(tx.created_at || Date.now()).toLocaleString()}
                             </td>
                             <td className="py-4 px-6">
-                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${
-                                tx.type === 'deposit'
+                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide ${
+                                isCapital
                                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  : tx.type === 'withdrawal'
-                                  ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                                  : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                  : isTrade
+                                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
                               }`}>
-                                {tx.type === 'deposit' ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                                {tx.type}
+                                {isPositive ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDownRight className="w-3.5 h-3.5 text-red-400" />}
+                                {typeLabel}
                               </span>
                             </td>
                             <td className="py-4 px-6 font-medium text-white">
                               {tx.user_name || tx.user_id || 'System Client'}
                             </td>
                             <td className={`py-4 px-6 font-mono font-bold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {isPositive ? '+' : '-'}${Math.abs(Number(tx.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              {isPositive ? '+' : '-'}${Math.abs(rawAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td className="py-4 px-6">
                               <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
