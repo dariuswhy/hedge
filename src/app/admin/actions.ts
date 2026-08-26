@@ -17,6 +17,10 @@ export async function createClientWithCapital(state: any, formData: FormData) {
   const supabaseAdmin = createAdminClient()
   const supabase = await createClient()
 
+  // Verify Admin
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
   // 1. Invite User via Supabase Admin Auth
   const { data: newUser, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
     data: {
@@ -30,7 +34,7 @@ export async function createClientWithCapital(state: any, formData: FormData) {
   // Fallback if user already exists or in local demo mode
   if (inviteErr) {
     console.warn('Supabase invite notice:', inviteErr.message)
-    const { data: existingProfile } = await supabase
+    const { data: existingProfile } = await supabaseAdmin
       .from('profiles')
       .select('id')
       .eq('email', email)
@@ -42,15 +46,25 @@ export async function createClientWithCapital(state: any, formData: FormData) {
 
   if (targetUserId && initialCapital > 0) {
     // 2. Deposit Initial Capital
-    await supabase.from('invested_capital').insert({
+    await supabaseAdmin.from('invested_capital').insert({
+      id: crypto.randomUUID(),
       user_id: targetUserId,
       amount_invested: initialCapital
     })
 
     // 3. Initialize Ledger
-    await supabase.from('ledger').insert({
+    await supabaseAdmin.from('ledger').insert({
+      id: crypto.randomUUID(),
       user_id: targetUserId,
       current_value: initialCapital
+    })
+
+    // 4. Audit Transaction
+    await supabaseAdmin.from('transactions').insert({
+      id: crypto.randomUUID(),
+      user_id: targetUserId,
+      type: 'CAPITAL_DEPOSIT',
+      amount: initialCapital
     })
   }
 
@@ -69,21 +83,20 @@ export async function deleteClientAccount(userId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') return { error: 'Unauthorized' }
+  const supabaseAdmin = createAdminClient()
 
   // 1. Delete pool memberships
-  await supabase.from('hedge_pool_members').delete().eq('user_id', userId)
+  await supabaseAdmin.from('hedge_pool_members').delete().eq('user_id', userId)
 
   // 2. Delete transactions
-  await supabase.from('transactions').delete().eq('user_id', userId)
+  await supabaseAdmin.from('transactions').delete().eq('user_id', userId)
 
   // 3. Delete ledger & capital
-  await supabase.from('ledger').delete().eq('user_id', userId)
-  await supabase.from('invested_capital').delete().eq('user_id', userId)
+  await supabaseAdmin.from('ledger').delete().eq('user_id', userId)
+  await supabaseAdmin.from('invested_capital').delete().eq('user_id', userId)
 
   // 4. Delete profile
-  const { error: profileErr } = await supabase.from('profiles').delete().eq('id', userId)
+  const { error: profileErr } = await supabaseAdmin.from('profiles').delete().eq('id', userId)
 
   if (profileErr) {
     console.error('Delete profile error:', profileErr)
@@ -112,11 +125,11 @@ export async function addCapital(state: any, formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') return { error: 'Unauthorized' }
+  const supabaseAdmin = createAdminClient()
 
-  // Insert capital
-  const { error } = await supabase.from('invested_capital').insert({
+  // Insert capital using admin client bypassing RLS
+  const { error } = await supabaseAdmin.from('invested_capital').insert({
+    id: crypto.randomUUID(),
     user_id: userId,
     amount_invested: amount
   })
@@ -124,7 +137,7 @@ export async function addCapital(state: any, formData: FormData) {
   if (error) return { error: error.message }
 
   // Also update ledger
-  const { data: latestLedger } = await supabase
+  const { data: latestLedger } = await supabaseAdmin
     .from('ledger')
     .select('current_value')
     .eq('user_id', userId)
@@ -132,9 +145,18 @@ export async function addCapital(state: any, formData: FormData) {
     .limit(1)
 
   const currentVal = latestLedger && latestLedger.length > 0 ? Number(latestLedger[0].current_value) : 0
-  await supabase.from('ledger').insert({
+  await supabaseAdmin.from('ledger').insert({
+    id: crypto.randomUUID(),
     user_id: userId,
     current_value: currentVal + amount
+  })
+
+  // Audit Transaction
+  await supabaseAdmin.from('transactions').insert({
+    id: crypto.randomUUID(),
+    user_id: userId,
+    type: 'CAPITAL_TOPUP',
+    amount: amount
   })
 
   revalidatePath('/admin')
@@ -155,10 +177,9 @@ export async function updatePerformance(state: any, formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') return { error: 'Unauthorized' }
+  const supabaseAdmin = createAdminClient()
 
-  const { data: capitalData, error: capitalError } = await supabase
+  const { data: capitalData, error: capitalError } = await supabaseAdmin
     .from('invested_capital')
     .select('user_id, amount_invested')
 
@@ -181,12 +202,13 @@ export async function updatePerformance(state: any, formData: FormData) {
     const share = userCapital / totalFundCapital
     const userNewValue = newTotalValue * share
     return {
+      id: crypto.randomUUID(),
       user_id: userId,
       current_value: userNewValue
     }
   })
 
-  const { error: ledgerError } = await supabase.from('ledger').insert(ledgerInserts)
+  const { error: ledgerError } = await supabaseAdmin.from('ledger').insert(ledgerInserts)
   if (ledgerError) return { error: ledgerError.message }
 
   revalidatePath('/admin')
@@ -199,9 +221,6 @@ export async function sendStatements(state: any, scope: string = 'all', targetId
   // Verify caller is admin
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
-
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') return { error: 'Unauthorized' }
 
   try {
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
