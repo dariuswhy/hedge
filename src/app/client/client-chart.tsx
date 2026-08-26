@@ -6,7 +6,7 @@ import { format } from 'date-fns'
 export default function ClientChart({ data }: { data: any[] }) {
   if (!data || data.length === 0) {
     return (
-      <div className="h-[400px] flex items-center justify-center text-gray-500 bg-card/20 rounded-xl border border-white/5">
+      <div className="h-full w-full flex items-center justify-center text-gray-500">
         No performance data available yet.
       </div>
     )
@@ -18,7 +18,7 @@ export default function ClientChart({ data }: { data: any[] }) {
   }))
 
   return (
-    <div className="h-[400px] w-full mt-6 bg-card/20 p-6 rounded-xl border border-white/5">
+    <div className="h-full w-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={formattedData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
@@ -37,7 +37,7 @@ export default function ClientChart({ data }: { data: any[] }) {
             tickFormatter={(value) => `$${value.toLocaleString()}`}
           />
           <Tooltip 
-            contentStyle={{ backgroundColor: '#000000', borderColor: '#333', borderRadius: '8px' }}
+            contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }}
             itemStyle={{ color: '#fff' }}
           />
           <Line 

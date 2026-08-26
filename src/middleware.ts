@@ -27,41 +27,26 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // IMPORTANT: Avoid writing any logic between createServerClient and
-  // supabase.auth.getUser(). A simple mistake could make it very hard to debug
-  // issues with users being randomly logged out.
-
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
 
-  // Protect admin and client routes
-  if (!user && (pathname.startsWith('/admin') || pathname.startsWith('/client'))) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@hedge.com'
+  const isAdmin = user?.email?.toLowerCase() === adminEmail.toLowerCase()
+
+  // Protect admin routes: only authenticated admin users can access /admin
+  if (pathname.startsWith('/admin')) {
+    if (!user) return NextResponse.redirect(new URL('/login', request.url))
+    if (!isAdmin) return NextResponse.redirect(new URL('/client', request.url))
   }
 
-  // Redirect authenticated users away from login
-  if (user && pathname === '/login') {
-    // Ideally we fetch the profile to see if they are admin or client,
-    // but in middleware it's an extra DB call. We can just redirect to a 
-    // common redirector or let them go to /client and client layout redirects to /admin if admin.
-    // For simplicity, let's redirect to a simple routing page or just /client
-    const url = request.nextUrl.clone()
-    url.pathname = '/client' 
-    // Wait, if it's an admin, they might want to go to /admin.
-    // We can handle role-based redirection in the app/page.tsx
-    return NextResponse.redirect(url)
-  }
+  // Allow /update-password without login so password reset flow works seamlessly!
 
-  // Redirect root to login
-  if (pathname === '/') {
-    const url = request.nextUrl.clone()
-    url.pathname = user ? '/client' : '/login'
-    return NextResponse.redirect(url)
+  // Protect client routes: requires authenticated user
+  if (pathname.startsWith('/client')) {
+    if (!user) return NextResponse.redirect(new URL('/login', request.url))
   }
 
   return supabaseResponse
@@ -69,13 +54,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - images, etc.
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

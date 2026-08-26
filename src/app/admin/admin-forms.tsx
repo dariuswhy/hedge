@@ -1,97 +1,242 @@
 'use client'
 
 import { useActionState } from 'react'
-import { inviteClient, addCapital, updatePerformance, sendStatements } from './actions'
+import { createClientWithCapital, addCapital, updatePerformance } from './actions'
+import { UserPlus, DollarSign, TrendingUp, CheckCircle, AlertCircle } from 'lucide-react'
 
-export default function AdminForms({ clients }: { clients: any[] }) {
-  // We can use simplified states for forms without complex validation for now
-  const [inviteState, inviteAction, isInviting] = useActionState(inviteClient, null)
-  const [capitalState, capitalAction, isAddingCapital] = useActionState(addCapital, null)
-  const [performanceState, performanceAction, isUpdating] = useActionState(updatePerformance, null)
-  const [statementsState, statementsAction, isSending] = useActionState(sendStatements, null)
+interface AdminFormsProps {
+  clients: { id: string; full_name: string | null; email: string | null }[]
+}
+
+const initialState: { error?: string; success?: string } = {}
+
+export default function AdminForms({ clients }: AdminFormsProps) {
+  const [inviteState, inviteFormAction, isInvitePending] = useActionState(
+    async (prevState: { error?: string; success?: string }, formData: FormData) => {
+      return await createClientWithCapital(prevState, formData)
+    },
+    initialState
+  )
+
+  const [capitalState, capitalFormAction, isCapitalPending] = useActionState(
+    async (prevState: { error?: string; success?: string }, formData: FormData) => {
+      return await addCapital(prevState, formData)
+    },
+    initialState
+  )
+
+  const [perfState, perfFormAction, isPerfPending] = useActionState(
+    async (prevState: { error?: string; success?: string }, formData: FormData) => {
+      return await updatePerformance(prevState, formData)
+    },
+    initialState
+  )
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
-      {/* Invite Client Form */}
-      <div className="bg-card/40 border border-white/5 rounded-2xl p-6 shadow-xl">
-        <h3 className="text-xl font-medium mb-4 text-blue-400">Invite New Client</h3>
-        <form action={inviteAction} className="space-y-4">
-          <div>
-            <label className="block text-xs text-gray-400 uppercase tracking-wider mb-2">Full Name</label>
-            <input name="fullName" type="text" required className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 text-white" />
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {/* 1. Unified Client Onboarding Form (Name + Email + Initial Capital) */}
+      <div className="p-6 rounded-2xl bg-black/40 border border-white/10 space-y-4">
+        <div className="flex items-center gap-3 border-b border-white/10 pb-3">
+          <div className="p-2 bg-blue-500/20 rounded-xl text-blue-400">
+            <UserPlus className="w-5 h-5" />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 uppercase tracking-wider mb-2">Email Address</label>
-            <input name="email" type="email" required className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 text-white" />
-          </div>
-          {inviteState?.error && <p className="text-red-400 text-sm">{inviteState.error}</p>}
-          {inviteState?.success && <p className="text-green-400 text-sm">{inviteState.success}</p>}
-          <button disabled={isInviting} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors">
-            {isInviting ? 'Sending...' : 'Send Invite'}
-          </button>
-        </form>
-      </div>
-
-      {/* Add Capital Form */}
-      <div className="bg-card/40 border border-white/5 rounded-2xl p-6 shadow-xl">
-        <h3 className="text-xl font-medium mb-4 text-green-400">Add Invested Capital</h3>
-        <form action={capitalAction} className="space-y-4">
-          <div>
-            <label className="block text-xs text-gray-400 uppercase tracking-wider mb-2">Select Client</label>
-            <select name="userId" required className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 text-white appearance-none">
-              <option value="">-- Choose a client --</option>
-              {clients.map(client => (
-                <option key={client.id} value={client.id}>{client.full_name} ({client.email})</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 uppercase tracking-wider mb-2">Amount ($)</label>
-            <input name="amount" type="number" step="0.01" min="0" required className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 text-white" />
-          </div>
-          {capitalState?.error && <p className="text-red-400 text-sm">{capitalState.error}</p>}
-          {capitalState?.success && <p className="text-green-400 text-sm">{capitalState.success}</p>}
-          <button disabled={isAddingCapital} className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg transition-colors">
-            {isAddingCapital ? 'Adding...' : 'Add Capital'}
-          </button>
-        </form>
-      </div>
-
-      {/* Update Fund Performance */}
-      <div className="bg-card/40 border border-white/5 rounded-2xl p-6 shadow-xl md:col-span-2">
-        <div className="md:flex gap-8 items-start">
-          <div className="flex-1 mb-6 md:mb-0">
-            <h3 className="text-xl font-medium mb-2 text-purple-400">Update Fund Performance</h3>
-            <p className="text-sm text-gray-400 mb-6">
-              Enter the new Total Value of the entire fund. The system will dynamically calculate each client's share based on their invested capital and update their ledger.
-            </p>
-            <form action={performanceAction} className="space-y-4">
-              <div>
-                <label className="block text-xs text-gray-400 uppercase tracking-wider mb-2">New Total Fund Value ($)</label>
-                <input name="newTotalValue" type="number" step="0.01" min="0" required className="w-full max-w-md bg-black border border-white/10 rounded-lg px-4 py-3 text-white text-lg font-medium" />
-              </div>
-              {performanceState?.error && <p className="text-red-400 text-sm">{performanceState.error}</p>}
-              {performanceState?.success && <p className="text-green-400 text-sm">{performanceState.success}</p>}
-              <button disabled={isUpdating} className="w-full max-w-md bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg transition-colors font-medium">
-                {isUpdating ? 'Calculating & Updating...' : 'Update Performance & Generate Ledger'}
-              </button>
-            </form>
-          </div>
-
-          <div className="flex-1 border-t md:border-t-0 md:border-l border-white/10 pt-6 md:pt-0 md:pl-8">
-            <h3 className="text-xl font-medium mb-2 text-orange-400">Send Statements</h3>
-            <p className="text-sm text-gray-400 mb-6">
-              Send the latest statements via email to all clients using Resend.
-            </p>
-            <form action={statementsAction} className="space-y-4">
-              {statementsState?.error && <p className="text-red-400 text-sm">{statementsState.error}</p>}
-              {statementsState?.success && <p className="text-green-400 text-sm">{statementsState.success}</p>}
-              <button disabled={isSending} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg transition-colors font-medium">
-                {isSending ? 'Sending Emails...' : 'Send Statements Now'}
-              </button>
-            </form>
+            <h4 className="text-base font-semibold text-white">Create New Client Account</h4>
+            <p className="text-[11px] text-gray-400">Add email, full name, and initial capital in 1 step.</p>
           </div>
         </div>
+
+        <form action={inviteFormAction} className="space-y-4 text-xs">
+          <div>
+            <label className="block text-gray-300 font-semibold mb-1 uppercase tracking-wider">
+              Full Name
+            </label>
+            <input
+              type="text"
+              name="fullName"
+              placeholder="e.g. Marcus Vance"
+              required
+              className="w-full px-3.5 py-2.5 rounded-xl glass-input text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block text-gray-300 font-semibold mb-1 uppercase tracking-wider">
+              Email Address
+            </label>
+            <input
+              type="email"
+              name="email"
+              placeholder="marcus@vancecap.com"
+              required
+              className="w-full px-3.5 py-2.5 rounded-xl glass-input text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block text-gray-300 font-semibold mb-1 uppercase tracking-wider">
+              Initial Capital Deposit ($)
+            </label>
+            <input
+              type="number"
+              name="initialCapital"
+              step="any"
+              placeholder="100000"
+              required
+              className="w-full px-3.5 py-2.5 rounded-xl glass-input font-mono text-xs font-bold"
+            />
+          </div>
+
+          {inviteState?.error && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-[11px] flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {inviteState.error}
+            </div>
+          )}
+
+          {inviteState?.success && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 shrink-0" />
+              {inviteState.success}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isInvitePending}
+            className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg transition-all disabled:opacity-50"
+          >
+            {isInvitePending ? 'Creating Client...' : 'Create & Deposit Capital'}
+          </button>
+        </form>
+      </div>
+
+      {/* 2. Add Top-Up Capital Form */}
+      <div className="p-6 rounded-2xl bg-black/40 border border-white/10 space-y-4">
+        <div className="flex items-center gap-3 border-b border-white/10 pb-3">
+          <div className="p-2 bg-emerald-500/20 rounded-xl text-emerald-400">
+            <DollarSign className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-base font-semibold text-white">Add Top-Up Capital</h4>
+            <p className="text-[11px] text-gray-400">Inject additional capital into existing client account.</p>
+          </div>
+        </div>
+
+        <form action={capitalFormAction} className="space-y-4 text-xs">
+          <div>
+            <label className="block text-gray-300 font-semibold mb-1 uppercase tracking-wider">
+              Select Client
+            </label>
+            <select
+              name="userId"
+              required
+              className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/10 text-white text-xs focus:outline-none focus:border-blue-500"
+            >
+              <option value="">-- Choose a client --</option>
+              {clients.map((c: any) => {
+                const isAdmin = c.role === 'admin' || c.email?.includes('admin') || c.email?.includes('darius')
+                const displayName = isAdmin
+                  ? `${c.full_name || 'Darius'} (Admin)`
+                  : c.full_name && c.full_name !== c.email
+                  ? `${c.full_name} (${c.email})`
+                  : c.email
+                return (
+                  <option key={c.id} value={c.id}>
+                    {displayName}
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-gray-300 font-semibold mb-1 uppercase tracking-wider">
+              Amount ($)
+            </label>
+            <input
+              type="number"
+              name="amount"
+              step="any"
+              placeholder="50000"
+              required
+              className="w-full px-3.5 py-2.5 rounded-xl glass-input font-mono text-xs font-bold"
+            />
+          </div>
+
+          {capitalState?.error && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-[11px] flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {capitalState.error}
+            </div>
+          )}
+
+          {capitalState?.success && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 shrink-0" />
+              {capitalState.success}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isCapitalPending}
+            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-lg transition-all disabled:opacity-50"
+          >
+            {isCapitalPending ? 'Injecting...' : 'Inject Top-Up Capital'}
+          </button>
+        </form>
+      </div>
+
+      {/* 3. Global Fund Valuation Form */}
+      <div className="p-6 rounded-2xl bg-black/40 border border-white/10 space-y-4">
+        <div className="flex items-center gap-3 border-b border-white/10 pb-3">
+          <div className="p-2 bg-purple-500/20 rounded-xl text-purple-400">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-base font-semibold text-white">Update Global Fund AUM</h4>
+            <p className="text-[11px] text-gray-400">Distributes total fund performance proportionally across clients.</p>
+          </div>
+        </div>
+
+        <form action={perfFormAction} className="space-y-4 text-xs">
+          <div>
+            <label className="block text-gray-300 font-semibold mb-1 uppercase tracking-wider">
+              New Total Fund Valuation ($)
+            </label>
+            <input
+              type="number"
+              name="newTotalValue"
+              step="any"
+              placeholder="e.g. 650000"
+              required
+              className="w-full px-3.5 py-2.5 rounded-xl glass-input font-mono text-xs font-bold"
+            />
+          </div>
+
+          {perfState?.error && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-[11px] flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {perfState.error}
+            </div>
+          )}
+
+          {perfState?.success && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 shrink-0" />
+              {perfState.success}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isPerfPending}
+            className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-lg transition-all disabled:opacity-50"
+          >
+            {isPerfPending ? 'Updating Fund...' : 'Update Global Fund Performance'}
+          </button>
+        </form>
       </div>
     </div>
   )
