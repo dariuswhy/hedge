@@ -14,22 +14,31 @@ export function Navbar() {
   const supabase = createClient()
 
   useEffect(() => {
+    const fetchRole = async (userId: string) => {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single()
+      if (profile?.role) {
+        setUserRole(profile.role)
+      }
+    }
+
     const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       setUser(session?.user || null)
       if (session?.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .single()
-        setUserRole(profile?.role || 'client')
+        await fetchRole(session.user.id)
       }
     }
     getUser()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user || null)
+      if (session?.user) {
+        await fetchRole(session.user.id)
+      }
     })
 
     return () => subscription.unsubscribe()
@@ -98,9 +107,13 @@ export function Navbar() {
                 <span className="text-xs font-medium text-gray-200 truncate max-w-[150px]">
                   {user?.email || (isAdminPath ? 'admin@hedge.com' : 'investor@hedge.com')}
                 </span>
-                <span className="text-[10px] font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  {isAdminPath || userRole === 'admin' ? 'Fund Manager (Active)' : 'Verified Investor'}
+                <span className={`text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1 ${
+                  userRole === 'admin' ? 'text-purple-400' : 'text-blue-400'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                    userRole === 'admin' ? 'bg-purple-400' : 'bg-emerald-400'
+                  }`} />
+                  {userRole === 'admin' ? 'Fund Manager (Active)' : 'Verified Investor'}
                 </span>
               </div>
               <button
