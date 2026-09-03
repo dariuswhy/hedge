@@ -113,16 +113,16 @@ export async function dispatchStatementsPayload({
       .order('created_at', { ascending: false })
       .limit(1)
 
-    // Fetch total invested capital
+    // Fetch latest active invested capital snapshot
     const { data: capitalData } = await supabase
       .from('invested_capital')
       .select('amount_invested')
       .eq('user_id', client.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
 
     const currentValue = ledgerData && ledgerData.length > 0 ? Number(ledgerData[0].current_value) : 0
-    const investedAmount = capitalData
-      ? capitalData.reduce((acc, row) => acc + Number(row.amount_invested || 0), 0)
-      : 0
+    const investedAmount = capitalData && capitalData.length > 0 ? Number(capitalData[0].amount_invested || 0) : 0
 
     const emailHtml = renderStatementEmailHtml({
       clientName: client.full_name || 'Valued Investor',

@@ -128,11 +128,20 @@ export async function addCapital(state: any, formData: FormData) {
 
   const supabaseAdmin = createAdminClient()
 
+  const { data: latestCapital } = await supabaseAdmin
+    .from('invested_capital')
+    .select('amount_invested')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  const currentCapital = latestCapital && latestCapital.length > 0 ? Number(latestCapital[0].amount_invested) : 0
+
   // Insert capital using admin client bypassing RLS
   const { error } = await supabaseAdmin.from('invested_capital').insert({
     id: crypto.randomUUID(),
     user_id: userId,
-    amount_invested: amount
+    amount_invested: currentCapital + amount
   })
 
   if (error) return { error: error.message }
@@ -182,7 +191,8 @@ export async function updatePerformance(state: any, formData: FormData) {
 
   const { data: capitalData, error: capitalError } = await supabaseAdmin
     .from('invested_capital')
-    .select('user_id, amount_invested')
+    .select('user_id, amount_invested, created_at')
+    .order('created_at', { ascending: false })
 
   if (capitalError) return { error: capitalError.message }
 
@@ -190,9 +200,10 @@ export async function updatePerformance(state: any, formData: FormData) {
   let totalFundCapital = 0
 
   capitalData.forEach(row => {
-    const current = userCapitalMap.get(row.user_id) || 0
-    userCapitalMap.set(row.user_id, current + Number(row.amount_invested))
-    totalFundCapital += Number(row.amount_invested)
+    if (!userCapitalMap.has(row.user_id)) {
+      userCapitalMap.set(row.user_id, Number(row.amount_invested))
+      totalFundCapital += Number(row.amount_invested)
+    }
   })
 
   if (totalFundCapital === 0) {

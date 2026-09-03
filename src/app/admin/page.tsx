@@ -49,10 +49,11 @@ export default async function AdminPage() {
     .from('profiles')
     .select('id, full_name, email, role')
 
-  // 2. Fetch Capital per client
+  // 2. Fetch Capital per client (latest snapshot per client)
   const { data: capitalRows } = await supabaseAdmin
     .from('invested_capital')
-    .select('user_id, amount_invested')
+    .select('user_id, amount_invested, created_at')
+    .order('created_at', { ascending: false })
 
   // 3. Fetch Ledger per client
   const { data: ledgerRows } = await supabaseAdmin
@@ -60,12 +61,13 @@ export default async function AdminPage() {
     .select('user_id, current_value, created_at')
     .order('created_at', { ascending: false })
 
-  // Calculate capital & latest balance per client
+  // Calculate latest capital & latest balance per client
   const userCapitalMap = new Map<string, number>()
   if (capitalRows) {
     for (const c of capitalRows) {
-      const prev = userCapitalMap.get(c.user_id) || 0
-      userCapitalMap.set(c.user_id, prev + Number(c.amount_invested))
+      if (!userCapitalMap.has(c.user_id)) {
+        userCapitalMap.set(c.user_id, Number(c.amount_invested))
+      }
     }
   }
 

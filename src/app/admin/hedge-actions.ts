@@ -89,13 +89,15 @@ export async function addMembersToHedgePoolAction(state: any, formData: FormData
     const allocated = Number(m.allocatedAmount || 0)
     if (allocated <= 0) continue
 
-    // Fetch user total invested capital
+    // Fetch user total invested capital (latest active snapshot)
     const { data: userCapRows } = await supabaseAdmin
       .from('invested_capital')
       .select('amount_invested')
       .eq('user_id', m.userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
 
-    const totalUserCap = userCapRows?.reduce((acc, curr) => acc + Number(curr.amount_invested), 0) || 0
+    const totalUserCap = userCapRows && userCapRows.length > 0 ? Number(userCapRows[0].amount_invested) : 0
 
     // Fetch allocations in other active pools
     const { data: otherPoolAllocations } = await supabaseAdmin

@@ -21,13 +21,15 @@ export default async function ClientPage() {
     .eq('id', user.id)
     .single()
 
-  // 1. Fetch Total Invested Capital
+  // 1. Fetch Total Invested Capital (latest snapshot)
   const { data: capitalData } = await supabase
     .from('invested_capital')
     .select('amount_invested')
     .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
 
-  const totalInvested = capitalData?.reduce((acc, curr) => acc + Number(curr.amount_invested), 0) || 0
+  const totalInvested = capitalData && capitalData.length > 0 ? Number(capitalData[0].amount_invested) : 0
 
   // 2. Fetch Ledger History
   const { data: ledgerData } = await supabase
