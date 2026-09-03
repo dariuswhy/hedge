@@ -25,8 +25,9 @@ export default async function AdminPage() {
   const supabaseAdmin = createAdminClient()
 
   const isAdminEmail = user.email?.toLowerCase().includes('darius') ||
+                       user.email?.toLowerCase().includes('dionica') ||
                        user.email?.toLowerCase().includes('admin') ||
-                       user.email === 'darius.neagu270@gmail.com' ||
+                       user.email === 'daudionica@gmail.com' ||
                        user.email === 'darius.neagu27@gmail.com'
 
   if (isAdminEmail && profile?.role !== 'admin') {
@@ -102,7 +103,7 @@ export default async function AdminPage() {
     .from('transactions')
     .select('*, profile:profiles(full_name, email)')
     .order('created_at', { ascending: false })
-    .limit(30)
+    .limit(60)
 
   // 6. Fetch Pending Reset & Onboarding Requests using Admin Client
   const { data: resetRequests } = await supabaseAdmin
@@ -110,6 +111,20 @@ export default async function AdminPage() {
     .select('*')
     .order('created_at', { ascending: false })
     .limit(30)
+
+  // 7. Calculate Founders Profit Pocket from all profit cuts (type: 'fee')
+  const profitCutTransactions = (transactions || [])
+    .filter((t: any) => (t.type || '').toLowerCase() === 'fee')
+    .map((t: any) => ({
+      id: t.id,
+      created_at: t.created_at,
+      type: t.type,
+      amount: Math.abs(Number(t.amount || 0)),
+      user_name: t.profile?.full_name || t.profile?.email || 'Fund Client',
+      user_email: t.profile?.email || ''
+    }))
+
+  const profitPocketBalance = profitCutTransactions.reduce((acc, t) => acc + t.amount, 0)
 
   const formattedTransactions = (transactions || []).map((t: any) => ({
     id: t.id,
@@ -140,7 +155,7 @@ export default async function AdminPage() {
           <div className="flex items-center gap-3">
             <div className="glass px-5 py-2.5 rounded-full text-xs font-semibold flex items-center gap-2 text-purple-200 border border-purple-500/30">
               <ShieldAlert className="w-4 h-4 text-purple-400" />
-              Admin Privilege Active
+              Admin Privilege Active (Darius & Dionica)
             </div>
           </div>
         </header>
@@ -153,6 +168,8 @@ export default async function AdminPage() {
           hedgePools={hedgePools}
           recentTransactions={formattedTransactions}
           resetRequests={resetRequests || []}
+          profitPocketBalance={profitPocketBalance}
+          profitCutTransactions={profitCutTransactions}
         />
       </div>
     </div>

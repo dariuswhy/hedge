@@ -35,11 +35,13 @@ export async function middleware(request: NextRequest) {
 
   const email = user?.email?.toLowerCase() || ''
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@hedge.com').toLowerCase()
-  const isAdmin = email === adminEmail ||
+  const isAdmin = user?.user_metadata?.role === 'admin' ||
+                  email === adminEmail ||
+                  email === 'darius.neagu27@gmail.com' ||
+                  email === 'daudionica@gmail.com' ||
                   email.includes('darius') ||
-                  email.includes('admin') ||
-                  email === 'darius.neagu270@gmail.com' ||
-                  email === 'darius.neagu27@gmail.com'
+                  email.includes('dionica') ||
+                  email.includes('admin')
 
   // Protect admin routes: only authenticated admin users can access /admin
   if (pathname.startsWith('/admin')) {

@@ -236,8 +236,9 @@ export async function sendStatements(state: any, scope: string = 'all', targetId
 
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   const isAdminEmail = user.email?.toLowerCase().includes('darius') ||
+                       user.email?.toLowerCase().includes('dionica') ||
                        user.email?.toLowerCase().includes('admin') ||
-                       user.email === 'darius.neagu270@gmail.com' ||
+                       user.email === 'daudionica@gmail.com' ||
                        user.email === 'darius.neagu27@gmail.com'
 
   if (profile?.role !== 'admin' && !isAdminEmail) return { error: 'Unauthorized' }

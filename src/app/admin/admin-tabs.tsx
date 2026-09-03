@@ -23,7 +23,10 @@ import {
   Calendar,
   Clock,
   Video,
-  XCircle
+  XCircle,
+  Coins,
+  Wallet,
+  Crown
 } from 'lucide-react'
 import AdminForms from './admin-forms'
 import ClientSearch from './client-search'
@@ -39,6 +42,8 @@ interface AdminTabsProps {
   hedgePools: HedgePool[]
   recentTransactions?: any[]
   resetRequests?: any[]
+  profitPocketBalance?: number
+  profitCutTransactions?: any[]
 }
 
 export default function AdminTabs({
@@ -47,9 +52,11 @@ export default function AdminTabs({
   totalInvestedCapital,
   hedgePools,
   recentTransactions = [],
-  resetRequests = []
+  resetRequests = [],
+  profitPocketBalance = 0,
+  profitCutTransactions = []
 }: AdminTabsProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'pools' | 'search' | 'ledger' | 'statements' | 'requests'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'pocket' | 'pools' | 'search' | 'ledger' | 'statements' | 'requests'>('overview')
   
   // Statement dispatch scope state
   const [dispatchScope, setDispatchScope] = useState<'all' | 'pool' | 'client'>('all')
@@ -127,6 +134,12 @@ export default function AdminTabs({
 
   const tabs = [
     { id: 'overview', label: 'Overview & Analytics', icon: LayoutDashboard },
+    {
+      id: 'pocket',
+      label: 'Founders Profit Pocket',
+      icon: Coins,
+      badge: profitPocketBalance > 0 ? `$${profitPocketBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : undefined
+    },
     { id: 'pools', label: 'Hedge Pools & Splits', icon: Layers, badge: hedgePools.length },
     { id: 'search', label: 'Client Search', icon: Search, badge: clients.length },
     { id: 'ledger', label: 'Ledger & Transactions', icon: FileText },
@@ -264,6 +277,44 @@ export default function AdminTabs({
                 </div>
               </div>
 
+              {/* Founders Profit Pocket Quick Banner */}
+              <div className="glass-card rounded-3xl p-6 bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-blue-500/10 border border-amber-500/30 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl relative overflow-hidden">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
+                    <Coins className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        Shared Partners Treasury
+                      </span>
+                      <span className="text-xs text-gray-400">Co-owned: Darius (50%) & Dionica (50%)</span>
+                    </div>
+                    <h4 className="text-xl font-bold text-white mt-1">Founders Profit Pocket</h4>
+                    <p className="text-xs text-gray-400">Automated accumulation of all client profit cuts and management fees.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-6">
+                  <div className="text-right">
+                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Total Pocket Reserve</p>
+                    <p className="text-2xl font-bold font-mono text-amber-300">
+                      ${profitPocketBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[11px] font-mono text-gray-400">
+                      ${(profitPocketBalance / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} each
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setActiveTab('pocket')}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-purple-600 hover:from-amber-400 hover:to-purple-500 text-white font-semibold text-xs transition-all shadow-lg flex items-center gap-2 whitespace-nowrap"
+                  >
+                    Open Pocket Vault →
+                  </button>
+                </div>
+              </div>
+
               {/* Quick Actions & Fund Performance Forms */}
               <div className="glass-card rounded-3xl p-8 space-y-6">
                 <div className="flex items-center justify-between border-b border-white/10 pb-6">
@@ -273,6 +324,164 @@ export default function AdminTabs({
                   </div>
                 </div>
                 <AdminForms clients={clients} />
+              </div>
+            </div>
+          )}
+
+          {/* TAB: FOUNDERS PROFIT POCKET */}
+          {activeTab === 'pocket' && (
+            <div className="space-y-8">
+              {/* Header & Overview Card */}
+              <div className="glass-card rounded-3xl p-8 bg-gradient-to-b from-amber-500/10 via-black/40 to-black/60 border border-amber-500/30 space-y-6 relative overflow-hidden shadow-2xl">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-white/10">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-amber-500 via-amber-400 to-purple-600 flex items-center justify-center text-white shadow-[0_0_35px_rgba(245,158,11,0.4)]">
+                      <Coins className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          Shared Reserve Vault
+                        </span>
+                        <span className="text-xs text-gray-400 flex items-center gap-1 font-mono">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          Multi-Admin Synchronized
+                        </span>
+                      </div>
+                      <h3 className="text-3xl font-light text-white tracking-tight">
+                        Founders Profit Pocket
+                      </h3>
+                      <p className="text-gray-400 text-sm mt-1">
+                        Centralized treasury co-owned by <strong>Darius Neagu</strong> and <strong>Dionica</strong>. All profit cuts executed on client portfolios automatically pool here.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3 Main Pocket KPI Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                  {/* Total Pocket Balance */}
+                  <div className="glass-card rounded-2xl p-6 bg-black/60 border border-amber-500/40 space-y-2 relative overflow-hidden group">
+                    <div className="flex items-center justify-between text-xs text-amber-300 font-semibold uppercase tracking-wider">
+                      <span>Total Pocket Reserve</span>
+                      <Coins className="w-4 h-4 text-amber-400" />
+                    </div>
+                    <p className="text-3xl font-bold font-mono text-white tracking-tight">
+                      ${profitPocketBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-gray-400 font-mono">
+                      {profitCutTransactions.length} total profit cut(s) captured
+                    </p>
+                  </div>
+
+                  {/* Partner 1: Darius Neagu (50%) */}
+                  <div className="glass-card rounded-2xl p-6 bg-black/60 border border-blue-500/30 space-y-2 relative overflow-hidden group">
+                    <div className="flex items-center justify-between text-xs text-blue-300 font-semibold uppercase tracking-wider">
+                      <span>Darius Neagu Allocation</span>
+                      <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold font-mono">50% SHARE</span>
+                    </div>
+                    <p className="text-3xl font-bold font-mono text-blue-400 tracking-tight">
+                      ${(profitPocketBalance / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-gray-400 font-mono flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-blue-400" />
+                      Managing Partner & Co-Founder
+                    </p>
+                  </div>
+
+                  {/* Partner 2: Dionica (50%) */}
+                  <div className="glass-card rounded-2xl p-6 bg-black/60 border border-purple-500/30 space-y-2 relative overflow-hidden group">
+                    <div className="flex items-center justify-between text-xs text-purple-300 font-semibold uppercase tracking-wider">
+                      <span>Dionica Allocation</span>
+                      <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-[10px] font-bold font-mono">50% SHARE</span>
+                    </div>
+                    <p className="text-3xl font-bold font-mono text-purple-400 tracking-tight">
+                      ${(profitPocketBalance / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-gray-400 font-mono flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-purple-400" />
+                      Co-Managing Partner & Co-Founder
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Profit Cut Stream & History Log */}
+              <div className="glass-card rounded-3xl p-8 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-6">
+                  <div>
+                    <h4 className="text-2xl font-light text-white flex items-center gap-2.5">
+                      <TrendingUp className="w-6 h-6 text-amber-400" />
+                      Profit Cut Capture Audit Stream
+                    </h4>
+                    <p className="text-gray-400 text-sm mt-1">
+                      Real-time audit log of all profit cut fees deducted from clients and channeled into the Founders Pocket.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-white/5 text-gray-400 text-xs uppercase tracking-wider font-semibold border-b border-white/10">
+                      <tr>
+                        <th className="py-4 px-6">Timestamp</th>
+                        <th className="py-4 px-6">Client / Account</th>
+                        <th className="py-4 px-6">Source Action</th>
+                        <th className="py-4 px-6">Profit Cut Amount</th>
+                        <th className="py-4 px-6">Pocket Allocation (50/50)</th>
+                        <th className="py-4 px-6">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-gray-200">
+                      {profitCutTransactions.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-12 text-center text-gray-400 space-y-2">
+                            <Coins className="w-8 h-8 text-gray-600 mx-auto" />
+                            <p>No profit cuts have been recorded in the pocket yet.</p>
+                            <p className="text-xs text-gray-500">
+                              When you process a "Profit Cut" on any client account in <strong>Process Transaction</strong>, it will automatically credit into this pocket.
+                            </p>
+                          </td>
+                        </tr>
+                      ) : (
+                        profitCutTransactions.map((tx: any, idx: number) => {
+                          const cutAmount = Number(tx.amount || 0)
+                          const halfCut = cutAmount / 2
+
+                          return (
+                            <tr key={tx.id || idx} className="hover:bg-white/5 transition-colors">
+                              <td className="py-4 px-6 font-mono text-xs text-gray-400">
+                                {new Date(tx.created_at || Date.now()).toLocaleString()}
+                              </td>
+                              <td className="py-4 px-6 font-medium text-white">
+                                {tx.user_name}
+                                {tx.user_email && <span className="block text-xs text-gray-500 font-mono">{tx.user_email}</span>}
+                              </td>
+                              <td className="py-4 px-6">
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                                  Profit Cut Fee
+                                </span>
+                              </td>
+                              <td className="py-4 px-6 font-mono font-bold text-emerald-400 text-base">
+                                +${cutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-4 px-6 font-mono text-xs text-gray-300">
+                                <span className="text-blue-400">Darius: +${halfCut.toFixed(2)}</span>
+                                <span className="mx-1 text-gray-600">|</span>
+                                <span className="text-purple-400">Dionica: +${halfCut.toFixed(2)}</span>
+                              </td>
+                              <td className="py-4 px-6">
+                                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                  Secured in Pocket
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

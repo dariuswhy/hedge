@@ -46,11 +46,13 @@ export async function login(state: any, formData: FormData) {
     const adminEmail = (process.env.ADMIN_EMAIL || 'admin@hedge.com').toLowerCase()
     const normalizedEmail = email.toLowerCase()
     isAdmin = profile?.role === 'admin' ||
+              user?.user_metadata?.role === 'admin' ||
               normalizedEmail === adminEmail ||
+              normalizedEmail === 'darius.neagu27@gmail.com' ||
+              normalizedEmail === 'daudionica@gmail.com' ||
               normalizedEmail.includes('darius') ||
-              normalizedEmail.includes('admin') ||
-              normalizedEmail === 'darius.neagu270@gmail.com' ||
-              normalizedEmail === 'darius.neagu27@gmail.com'
+              normalizedEmail.includes('dionica') ||
+              normalizedEmail.includes('admin')
   }
 
   if (isAdmin) {
