@@ -89,7 +89,9 @@ export async function dispatchStatementsPayload({
     return { error: 'No clients with valid email addresses found for the selected scope.' }
   }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` :
+    (process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : 'http://localhost:3000'))
   const configuredFrom = process.env.RESEND_FROM_EMAIL || 'Hedge Capital <onboarding@resend.dev>'
   const fallbackFrom = 'Hedge Capital <onboarding@resend.dev>'
 

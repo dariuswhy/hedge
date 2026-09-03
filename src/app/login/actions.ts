@@ -8,6 +8,17 @@ import { renderPasswordResetEmailHtml } from '@/lib/email-templates'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+function getSiteUrl() {
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
+  if (process.env.NEXT_PUBLIC_VERCEL_URL) return `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+  return 'http://localhost:3000'
+}
+
+function getFromEmail() {
+  return process.env.RESEND_FROM_EMAIL || 'Hedge Capital <onboarding@resend.dev>'
+}
+
 export async function login(state: any, formData: FormData) {
   const email = formData.get('email') as string
   const password = formData.get('password') as string
@@ -55,7 +66,7 @@ export async function requestPasswordResetApprovalAction(state: any, formData: F
 
   const supabase = await createClient()
   const supabaseAdmin = createAdminClient()
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+  const siteUrl = getSiteUrl()
 
   // 1. Insert reset request row
   await supabase.from('reset_requests').insert({
@@ -91,7 +102,7 @@ export async function requestPasswordResetApprovalAction(state: any, formData: F
   try {
     if (process.env.RESEND_API_KEY) {
       const emailRes = await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL || 'Hedge Capital <updates@cpthedge.com>',
+        from: getFromEmail(),
         to: email,
         subject: 'Authorization: Reset Your Hedge Capital Password',
         html: emailHtml
@@ -124,7 +135,7 @@ export async function approveResetRequestAction(requestId: string, email: string
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return { error: 'Unauthorized' }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+  const siteUrl = getSiteUrl()
 
   let resetLink = `${siteUrl}/update-password`
   try {
@@ -152,7 +163,7 @@ export async function approveResetRequestAction(requestId: string, email: string
   try {
     if (process.env.RESEND_API_KEY) {
       const resendRes = await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL || 'Hedge Capital <updates@cpthedge.com>',
+        from: getFromEmail(),
         to: email,
         subject: 'Approved: Reset Your Hedge Capital Password',
         html: emailHtml
@@ -203,7 +214,7 @@ export async function submitOnboardingApplicationAction(state: any, formData: Fo
   try {
     if (process.env.RESEND_API_KEY) {
       await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL || 'Hedge Capital <updates@cpthedge.com>',
+        from: getFromEmail(),
         to: process.env.ADMIN_EMAIL || 'admin@hedge.com',
         subject: `🔥 New Whitelist Access Application: ${name} ($${capital})`,
         html: `
@@ -246,8 +257,8 @@ export async function respondToApplicationAction(
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return { error: 'Unauthorized' }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
-  const fromEmail = process.env.RESEND_FROM_EMAIL || 'Hedge Capital <updates@cpthedge.com>'
+  const siteUrl = getSiteUrl()
+  const fromEmail = getFromEmail()
 
   let emailSubject = ''
   let emailHtml = ''
