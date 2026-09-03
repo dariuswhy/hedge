@@ -24,8 +24,7 @@ import {
   addMembersToHedgePoolAction,
   updateHedgePoolValuationAction,
   addHedgePoolTradeAction,
-  deleteHedgePoolAction,
-  purgeFakeDataAction
+  deleteHedgePoolAction
 } from './hedge-actions'
 
 interface ClientOption {
@@ -183,18 +182,6 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
     }
   }
 
-  const handlePurgeFakeData = async () => {
-    if (!confirm('Are you sure you want to delete all fake demo clients (john pork, example.com) and reset fund pools to a clean state?')) return
-    setIsSubmitting(true)
-    const res = await purgeFakeDataAction()
-    setIsSubmitting(false)
-    if (res.error) {
-      setStatusMessage({ type: 'error', text: res.error })
-    } else {
-      setStatusMessage({ type: 'success', text: res.success || 'Purged successfully!' })
-      setTimeout(() => window.location.reload(), 800)
-    }
-  }
 
   const handleDeletePool = async () => {
     if (!activePool) return
@@ -249,15 +236,6 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={handlePurgeFakeData}
-            disabled={isSubmitting}
-            className="px-4 py-2.5 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-medium text-xs flex items-center gap-1.5 transition-all disabled:opacity-50"
-          >
-            <Trash2 className="w-4 h-4 text-red-400" />
-            Purge Fake Clients & Reset to Clean $0
-          </button>
-
           <button
             onClick={() => setShowCreatePoolModal(true)}
             className="px-5 py-2.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-xs shadow-lg flex items-center gap-2 transition-all"

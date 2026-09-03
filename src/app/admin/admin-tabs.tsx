@@ -34,6 +34,7 @@ import HedgePoolsManager from './hedge-pools-manager'
 import { HedgePool } from '@/lib/hedge-pools'
 import { sendStatements } from './actions'
 import { approveResetRequestAction, respondToApplicationAction } from '../login/actions'
+import { payoutFromPocketAction, reinvestPocketIntoPoolAction } from './pocket-actions'
 
 interface AdminTabsProps {
   clients: any[]
@@ -58,11 +59,18 @@ export default function AdminTabs({
 }: AdminTabsProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'pocket' | 'pools' | 'search' | 'ledger' | 'statements' | 'requests'>('overview')
   
-  // Statement dispatch scope state
   const [dispatchScope, setDispatchScope] = useState<'all' | 'pool' | 'client'>('all')
   const [selectedTargetId, setSelectedTargetId] = useState<string>('')
   const [statementStatus, setStatementStatus] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
+
+  // Founders Profit Pocket interactive actions state
+  const [pocketPayoutAmount, setPocketPayoutAmount] = useState('')
+  const [pocketPayoutNote, setPocketPayoutNote] = useState('')
+  const [pocketReinvestAmount, setPocketReinvestAmount] = useState('')
+  const [pocketReinvestPoolId, setPocketReinvestPoolId] = useState(hedgePools[0]?.id || '')
+  const [pocketActionStatus, setPocketActionStatus] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [isExecutingPocket, setIsExecutingPocket] = useState(false)
 
   // Onboarding Request Meeting Modal State
   const [selectedRequestForMeeting, setSelectedRequestForMeeting] = useState<any | null>(null)
@@ -95,15 +103,15 @@ export default function AdminTabs({
   const daysList = Array.from({ length: 31 }, (_, i) => String(i + 1))
   const yearsList = ['2026', '2027', '2028', '2029', '2030']
 
-  // Map clients to enhanced structure for search
+  // Map clients to enhanced structure for search (clean real values only, no mock fallbacks)
   const enrichedClients = clients.map((c) => {
-    const totalInvested = c.totalInvested || 100000
-    const currentBalance = c.currentBalance || 118500
+    const totalInvested = typeof c.initialCapital === 'number' ? c.initialCapital : (typeof c.totalInvested === 'number' ? c.totalInvested : 0)
+    const currentBalance = typeof c.currentBalance === 'number' ? c.currentBalance : 0
     const roiAmount = currentBalance - totalInvested
     const roiPercent = totalInvested > 0 ? (roiAmount / totalInvested) * 100 : 0
     return {
       id: c.id,
-      full_name: c.full_name,
+      full_name: c.name || c.full_name || null,
       email: c.email,
       totalInvested,
       currentBalance,
@@ -288,10 +296,10 @@ export default function AdminTabs({
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
                         Shared Partners Treasury
                       </span>
-                      <span className="text-xs text-gray-400">Co-owned: Darius (50%) & Dionica (50%)</span>
+                      <span className="text-xs text-gray-400">Co-owned: Darius (100%) & Capitan (100%) Joint Ownership</span>
                     </div>
                     <h4 className="text-xl font-bold text-white mt-1">Founders Profit Pocket</h4>
-                    <p className="text-xs text-gray-400">Automated accumulation of all client profit cuts and management fees.</p>
+                    <p className="text-xs text-gray-400">Automated accumulation of client profit cuts, executive payouts & hedge pool reinvestments.</p>
                   </div>
                 </div>
 
@@ -301,8 +309,8 @@ export default function AdminTabs({
                     <p className="text-2xl font-bold font-mono text-amber-300">
                       ${profitPocketBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
-                    <p className="text-[11px] font-mono text-gray-400">
-                      ${(profitPocketBalance / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} each
+                    <p className="text-[11px] font-mono text-emerald-400 font-semibold">
+                      100% Mutual Co-Ownership
                     </p>
                   </div>
 
@@ -343,16 +351,16 @@ export default function AdminTabs({
                         <span className="px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
                           Shared Reserve Vault
                         </span>
-                        <span className="text-xs text-gray-400 flex items-center gap-1 font-mono">
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                          Multi-Admin Synchronized
+                        <span className="text-xs text-emerald-400 flex items-center gap-1 font-mono font-semibold">
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          100% Mutual Co-Ownership
                         </span>
                       </div>
                       <h3 className="text-3xl font-light text-white tracking-tight">
                         Founders Profit Pocket
                       </h3>
                       <p className="text-gray-400 text-sm mt-1">
-                        Centralized treasury co-owned by <strong>Darius Neagu</strong> and <strong>Dionica</strong>. All profit cuts executed on client portfolios automatically pool here.
+                        Centralized treasury co-owned by <strong>Darius</strong> and <strong>Capitan</strong>. Both partners hold <strong>100% mutual ownership</strong> and full access to withdraw or reinvest all profit cuts.
                       </p>
                     </div>
                   </div>
@@ -369,40 +377,219 @@ export default function AdminTabs({
                     <p className="text-3xl font-bold font-mono text-white tracking-tight">
                       ${profitPocketBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
-                    <p className="text-xs text-gray-400 font-mono">
-                      {profitCutTransactions.length} total profit cut(s) captured
+                    <p className="text-xs text-emerald-400 font-mono flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Active liquid balance ready for payout or reinvestment
                     </p>
                   </div>
 
-                  {/* Partner 1: Darius Neagu (50%) */}
+                  {/* Partner 1: Darius (100% Co-Owner) */}
                   <div className="glass-card rounded-2xl p-6 bg-black/60 border border-blue-500/30 space-y-2 relative overflow-hidden group">
                     <div className="flex items-center justify-between text-xs text-blue-300 font-semibold uppercase tracking-wider">
-                      <span>Darius Neagu Allocation</span>
-                      <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold font-mono">50% SHARE</span>
+                      <span>Darius</span>
+                      <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold font-mono">100% CO-OWNER</span>
                     </div>
                     <p className="text-3xl font-bold font-mono text-blue-400 tracking-tight">
-                      ${(profitPocketBalance / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ${profitPocketBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                     <p className="text-xs text-gray-400 font-mono flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-blue-400" />
-                      Managing Partner & Co-Founder
+                      Founding Partner (Full Mutual Access)
                     </p>
                   </div>
 
-                  {/* Partner 2: Dionica (50%) */}
+                  {/* Partner 2: Capitan (100% Co-Owner) */}
                   <div className="glass-card rounded-2xl p-6 bg-black/60 border border-purple-500/30 space-y-2 relative overflow-hidden group">
                     <div className="flex items-center justify-between text-xs text-purple-300 font-semibold uppercase tracking-wider">
-                      <span>Dionica Allocation</span>
-                      <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-[10px] font-bold font-mono">50% SHARE</span>
+                      <span>Capitan</span>
+                      <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-[10px] font-bold font-mono">100% CO-OWNER</span>
                     </div>
                     <p className="text-3xl font-bold font-mono text-purple-400 tracking-tight">
-                      ${(profitPocketBalance / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ${profitPocketBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                     <p className="text-xs text-gray-400 font-mono flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-purple-400" />
-                      Co-Managing Partner & Co-Founder
+                      Founding Partner (Full Mutual Access)
                     </p>
                   </div>
+                </div>
+              </div>
+
+              {/* Status Alert Message for Pocket Actions */}
+              {pocketActionStatus && (
+                <div className={`p-4 rounded-2xl border text-sm flex items-center justify-between ${
+                  pocketActionStatus.type === 'success'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    : 'bg-red-500/10 border-red-500/30 text-red-300'
+                }`}>
+                  <span>{pocketActionStatus.text}</span>
+                  <button onClick={() => setPocketActionStatus(null)} className="text-xs opacity-70 hover:opacity-100">Dismiss</button>
+                </div>
+              )}
+
+              {/* Executive Pocket Controls: Payout & Reinvest into Hedge Pool */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Control 1: Partner Payout (Withdraw from Pocket) */}
+                <div className="glass-card rounded-3xl p-8 border border-white/10 space-y-5 bg-gradient-to-b from-red-500/5 to-transparent">
+                  <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+                    <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center text-red-400">
+                      <Wallet className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-semibold text-white">Partner Payout (Withdraw)</h4>
+                      <p className="text-xs text-gray-400">Withdraw cash from the Founders Pocket reserve to pay yourselves.</p>
+                    </div>
+                  </div>
+
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault()
+                      const amt = parseFloat(pocketPayoutAmount)
+                      if (isNaN(amt) || amt <= 0) {
+                        setPocketActionStatus({ type: 'error', text: 'Please enter a valid payout amount.' })
+                        return
+                      }
+                      setIsExecutingPocket(true)
+                      setPocketActionStatus(null)
+                      const res = await payoutFromPocketAction(amt, pocketPayoutNote)
+                      setIsExecutingPocket(false)
+                      if (res.error) {
+                        setPocketActionStatus({ type: 'error', text: res.error })
+                      } else {
+                        setPocketActionStatus({ type: 'success', text: res.success || 'Payout executed!' })
+                        setPocketPayoutAmount('')
+                        setPocketPayoutNote('')
+                        setTimeout(() => window.location.reload(), 1000)
+                      }
+                    }}
+                    className="space-y-4"
+                  >
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
+                        Withdrawal Amount (USD)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-mono">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={pocketPayoutAmount}
+                          onChange={(e) => setPocketPayoutAmount(e.target.value)}
+                          className="w-full bg-black/50 border border-white/10 rounded-xl pl-9 pr-4 py-3 text-white text-sm font-mono focus:outline-none focus:border-red-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
+                        Distribution Note (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. September Partner Profit Share"
+                        value={pocketPayoutNote}
+                        onChange={(e) => setPocketPayoutNote(e.target.value)}
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-red-500"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isExecutingPocket || profitPocketBalance <= 0}
+                      className="w-full py-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-semibold text-xs tracking-wider uppercase transition-all shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      <Wallet className="w-4 h-4" />
+                      {isExecutingPocket ? 'Processing Payout...' : 'Withdraw to Partners (Pay Out)'}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Control 2: Reinvest Pocket into Hedge Pool */}
+                <div className="glass-card rounded-3xl p-8 border border-white/10 space-y-5 bg-gradient-to-b from-blue-500/5 to-transparent">
+                  <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-400">
+                      <Layers className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-semibold text-white">Reinvest Pocket into Hedge</h4>
+                      <p className="text-xs text-gray-400">Transfer capital directly from the Pocket into an active Hedge Pool.</p>
+                    </div>
+                  </div>
+
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault()
+                      const amt = parseFloat(pocketReinvestAmount)
+                      if (isNaN(amt) || amt <= 0) {
+                        setPocketActionStatus({ type: 'error', text: 'Please enter a valid reinvestment amount.' })
+                        return
+                      }
+                      if (!pocketReinvestPoolId) {
+                        setPocketActionStatus({ type: 'error', text: 'Please select a destination Hedge Pool.' })
+                        return
+                      }
+                      setIsExecutingPocket(true)
+                      setPocketActionStatus(null)
+                      const res = await reinvestPocketIntoPoolAction(amt, pocketReinvestPoolId)
+                      setIsExecutingPocket(false)
+                      if (res.error) {
+                        setPocketActionStatus({ type: 'error', text: res.error })
+                      } else {
+                        setPocketActionStatus({ type: 'success', text: res.success || 'Reinvested successfully!' })
+                        setPocketReinvestAmount('')
+                        setTimeout(() => window.location.reload(), 1000)
+                      }
+                    }}
+                    className="space-y-4"
+                  >
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
+                        Reinvestment Amount (USD)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-mono">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={pocketReinvestAmount}
+                          onChange={(e) => setPocketReinvestAmount(e.target.value)}
+                          className="w-full bg-black/50 border border-white/10 rounded-xl pl-9 pr-4 py-3 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
+                        Target Hedge Pool
+                      </label>
+                      <select
+                        value={pocketReinvestPoolId}
+                        onChange={(e) => setPocketReinvestPoolId(e.target.value)}
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-blue-500"
+                      >
+                        {hedgePools.length === 0 ? (
+                          <option value="">No active hedge pools created yet</option>
+                        ) : (
+                          hedgePools.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} (Strategy: {p.strategy || 'Fund'})
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isExecutingPocket || profitPocketBalance <= 0 || hedgePools.length === 0}
+                      className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-xs tracking-wider uppercase transition-all shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      <Layers className="w-4 h-4" />
+                      {isExecutingPocket ? 'Transferring Capital...' : 'Inject Pocket into Hedge Pool'}
+                    </button>
+                  </form>
                 </div>
               </div>
 
@@ -412,10 +599,10 @@ export default function AdminTabs({
                   <div>
                     <h4 className="text-2xl font-light text-white flex items-center gap-2.5">
                       <TrendingUp className="w-6 h-6 text-amber-400" />
-                      Profit Cut Capture Audit Stream
+                      Founders Pocket Master Ledger & Audit Stream
                     </h4>
                     <p className="text-gray-400 text-sm mt-1">
-                      Real-time audit log of all profit cut fees deducted from clients and channeled into the Founders Pocket.
+                      Complete real-time record of all profit cut inflows, partner payouts, and fund reinvestments.
                     </p>
                   </div>
                 </div>
@@ -425,10 +612,10 @@ export default function AdminTabs({
                     <thead className="bg-white/5 text-gray-400 text-xs uppercase tracking-wider font-semibold border-b border-white/10">
                       <tr>
                         <th className="py-4 px-6">Timestamp</th>
-                        <th className="py-4 px-6">Client / Account</th>
-                        <th className="py-4 px-6">Source Action</th>
-                        <th className="py-4 px-6">Profit Cut Amount</th>
-                        <th className="py-4 px-6">Pocket Allocation (50/50)</th>
+                        <th className="py-4 px-6">Party / Account</th>
+                        <th className="py-4 px-6">Transaction Type</th>
+                        <th className="py-4 px-6">Flow Impact</th>
+                        <th className="py-4 px-6">Co-Ownership</th>
                         <th className="py-4 px-6">Status</th>
                       </tr>
                     </thead>
@@ -437,16 +624,18 @@ export default function AdminTabs({
                         <tr>
                           <td colSpan={6} className="py-12 text-center text-gray-400 space-y-2">
                             <Coins className="w-8 h-8 text-gray-600 mx-auto" />
-                            <p>No profit cuts have been recorded in the pocket yet.</p>
+                            <p>Founders Pocket is fresh and ready at $0.00.</p>
                             <p className="text-xs text-gray-500">
-                              When you process a "Profit Cut" on any client account in <strong>Process Transaction</strong>, it will automatically credit into this pocket.
+                              When you execute a "Profit Cut" on any client account, the fees will automatically stream directly into this pocket.
                             </p>
                           </td>
                         </tr>
                       ) : (
                         profitCutTransactions.map((tx: any, idx: number) => {
                           const cutAmount = Number(tx.amount || 0)
-                          const halfCut = cutAmount / 2
+                          const isFee = tx.type === 'fee'
+                          const isPayout = tx.type === 'pocket_payout'
+                          const isReinvest = tx.type === 'pocket_reinvest'
 
                           return (
                             <tr key={tx.id || idx} className="hover:bg-white/5 transition-colors">
@@ -458,21 +647,31 @@ export default function AdminTabs({
                                 {tx.user_email && <span className="block text-xs text-gray-500 font-mono">{tx.user_email}</span>}
                               </td>
                               <td className="py-4 px-6">
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-purple-500/20 text-purple-300 border border-purple-500/40">
-                                  Profit Cut Fee
-                                </span>
+                                {isFee && (
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                    Profit Cut Inflow
+                                  </span>
+                                )}
+                                {isPayout && (
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                                    Partner Payout
+                                  </span>
+                                )}
+                                {isReinvest && (
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                                    Hedge Reinvestment
+                                  </span>
+                                )}
                               </td>
-                              <td className="py-4 px-6 font-mono font-bold text-emerald-400 text-base">
-                                +${cutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              <td className={`py-4 px-6 font-mono font-bold text-base ${isFee ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {isFee ? '+' : '-'}${cutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
                               <td className="py-4 px-6 font-mono text-xs text-gray-300">
-                                <span className="text-blue-400">Darius: +${halfCut.toFixed(2)}</span>
-                                <span className="mx-1 text-gray-600">|</span>
-                                <span className="text-purple-400">Dionica: +${halfCut.toFixed(2)}</span>
+                                <span className="text-emerald-400 font-semibold">100% Darius & Capitan</span>
                               </td>
                               <td className="py-4 px-6">
                                 <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                  Secured in Pocket
+                                  Settled in Vault
                                 </span>
                               </td>
                             </tr>

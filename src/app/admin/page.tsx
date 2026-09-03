@@ -112,19 +112,21 @@ export default async function AdminPage() {
     .order('created_at', { ascending: false })
     .limit(30)
 
-  // 7. Calculate Founders Profit Pocket from all profit cuts (type: 'fee')
-  const profitCutTransactions = (transactions || [])
-    .filter((t: any) => (t.type || '').toLowerCase() === 'fee')
+  // 7. Calculate Founders Profit Pocket (inflow: fee, outflow: pocket_payout, pocket_reinvest)
+  const pocketAuditTransactions = (transactions || [])
+    .filter((t: any) => ['fee', 'pocket_payout', 'pocket_reinvest'].includes((t.type || '').toLowerCase()))
     .map((t: any) => ({
       id: t.id,
       created_at: t.created_at,
-      type: t.type,
+      type: (t.type || '').toLowerCase(),
       amount: Math.abs(Number(t.amount || 0)),
       user_name: t.profile?.full_name || t.profile?.email || 'Fund Client',
       user_email: t.profile?.email || ''
     }))
 
-  const profitPocketBalance = profitCutTransactions.reduce((acc, t) => acc + t.amount, 0)
+  const inflow = pocketAuditTransactions.filter(t => t.type === 'fee').reduce((acc, t) => acc + t.amount, 0)
+  const outflow = pocketAuditTransactions.filter(t => ['pocket_payout', 'pocket_reinvest'].includes(t.type)).reduce((acc, t) => acc + t.amount, 0)
+  const profitPocketBalance = Math.max(0, inflow - outflow)
 
   const formattedTransactions = (transactions || []).map((t: any) => ({
     id: t.id,
@@ -155,7 +157,7 @@ export default async function AdminPage() {
           <div className="flex items-center gap-3">
             <div className="glass px-5 py-2.5 rounded-full text-xs font-semibold flex items-center gap-2 text-purple-200 border border-purple-500/30">
               <ShieldAlert className="w-4 h-4 text-purple-400" />
-              Admin Privilege Active (Darius & Dionica)
+              Admin Privilege Active (Darius & Capitan)
             </div>
           </div>
         </header>
@@ -169,7 +171,7 @@ export default async function AdminPage() {
           recentTransactions={formattedTransactions}
           resetRequests={resetRequests || []}
           profitPocketBalance={profitPocketBalance}
-          profitCutTransactions={profitCutTransactions}
+          profitCutTransactions={pocketAuditTransactions}
         />
       </div>
     </div>
