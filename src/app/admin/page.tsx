@@ -44,18 +44,18 @@ export default async function AdminPage() {
     redirect('/client')
   }
 
-  // 1. Fetch Clients (all profiles so Admin can also be an investor/client!)
-  const { data: clients } = await supabase
+  // 1. Fetch Clients using Admin client (all profiles so Admin can also be an investor/client!)
+  const { data: clients } = await supabaseAdmin
     .from('profiles')
     .select('id, full_name, email, role')
 
   // 2. Fetch Capital per client
-  const { data: capitalRows } = await supabase
+  const { data: capitalRows } = await supabaseAdmin
     .from('invested_capital')
     .select('user_id, amount_invested')
 
   // 3. Fetch Ledger per client
-  const { data: ledgerRows } = await supabase
+  const { data: ledgerRows } = await supabaseAdmin
     .from('ledger')
     .select('user_id, current_value, created_at')
     .order('created_at', { ascending: false })
@@ -92,19 +92,18 @@ export default async function AdminPage() {
     currentBalance: userBalanceMap.get(c.id) || (userCapitalMap.get(c.id) || 0)
   }))
 
-  // 4. Fetch Multi-Investor Hedge Pools
-  const hedgePools = await fetchAllHedgePoolsWithClient(supabase)
+  // 4. Fetch Multi-Investor Hedge Pools using Admin client
+  const hedgePools = await fetchAllHedgePoolsWithClient(supabaseAdmin)
 
-  // 5. Fetch Recent Transactions Log
-  const { data: transactions } = await supabase
+  // 5. Fetch Recent Transactions Log using Admin client (shows all transactions across clients)
+  const { data: transactions } = await supabaseAdmin
     .from('transactions')
     .select('*, profile:profiles(full_name, email)')
     .order('created_at', { ascending: false })
-    .limit(25)
+    .limit(30)
 
   // 6. Fetch Pending Reset & Onboarding Requests using Admin Client
-  const adminSupabase = createAdminClient()
-  const { data: resetRequests } = await adminSupabase
+  const { data: resetRequests } = await supabaseAdmin
     .from('reset_requests')
     .select('*')
     .order('created_at', { ascending: false })

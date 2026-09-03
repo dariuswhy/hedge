@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, User, Activity, DollarSign, TrendingUp, TrendingDown, Scissors, Trash2 } from 'lucide-react'
@@ -15,14 +16,21 @@ export default async function ClientDetailPage(props: { params: Promise<{ id: st
   if (!user) redirect('/login')
   
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') redirect('/client')
+  const isAdminEmail = user.email?.toLowerCase().includes('darius') ||
+                       user.email?.toLowerCase().includes('admin') ||
+                       user.email === 'darius.neagu270@gmail.com' ||
+                       user.email === 'darius.neagu27@gmail.com'
+
+  if (profile?.role !== 'admin' && !isAdminEmail) redirect('/client')
+
+  const supabaseAdmin = createAdminClient()
 
   // Fetch client details
-  const { data: client } = await supabase.from('profiles').select('*').eq('id', clientId).single()
+  const { data: client } = await supabaseAdmin.from('profiles').select('*').eq('id', clientId).single()
   if (!client) redirect('/admin')
 
   // Fetch ledger for current value
-  const { data: ledgerData } = await supabase
+  const { data: ledgerData } = await supabaseAdmin
     .from('ledger')
     .select('current_value')
     .eq('user_id', clientId)
@@ -32,7 +40,7 @@ export default async function ClientDetailPage(props: { params: Promise<{ id: st
   const currentValue = ledgerData && ledgerData.length > 0 ? Number(ledgerData[0].current_value) : 0
 
   // Fetch invested capital
-  const { data: investedData } = await supabase
+  const { data: investedData } = await supabaseAdmin
     .from('invested_capital')
     .select('amount_invested')
     .eq('user_id', clientId)
@@ -45,14 +53,14 @@ export default async function ClientDetailPage(props: { params: Promise<{ id: st
   const roi = investedCapital > 0 ? ((currentValue - investedCapital) / investedCapital) * 100 : 0
   const isPositive = roi >= 0
 
-  // Fetch transactions
+  // Fetch transactions using admin client (bypasses RLS so admin sees all transactions)
   let transactions: any[] = []
-  const { data: txData, error: txError } = await supabase
+  const { data: txData, error: txError } = await supabaseAdmin
     .from('transactions')
     .select('*')
     .eq('user_id', clientId)
     .order('created_at', { ascending: false })
-    .limit(15)
+    .limit(25)
     
   if (!txError && txData) {
       transactions = txData

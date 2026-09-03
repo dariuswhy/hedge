@@ -27,8 +27,22 @@ export async function login(state: any, formData: FormData) {
     return { error: error.message }
   }
 
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@hedge.com'
-  if (email.toLowerCase() === adminEmail.toLowerCase()) {
+  const { data: { user } } = await supabase.auth.getUser()
+  let isAdmin = false
+
+  if (user) {
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    const adminEmail = (process.env.ADMIN_EMAIL || 'admin@hedge.com').toLowerCase()
+    const normalizedEmail = email.toLowerCase()
+    isAdmin = profile?.role === 'admin' ||
+              normalizedEmail === adminEmail ||
+              normalizedEmail.includes('darius') ||
+              normalizedEmail.includes('admin') ||
+              normalizedEmail === 'darius.neagu270@gmail.com' ||
+              normalizedEmail === 'darius.neagu27@gmail.com'
+  }
+
+  if (isAdmin) {
     redirect('/admin')
   } else {
     redirect('/client')

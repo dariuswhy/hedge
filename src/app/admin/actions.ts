@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { dispatchStatementsPayload } from '@/lib/statements'
 
 export async function createClientWithCapital(state: any, formData: FormData) {
   const email = formData.get('email') as string
@@ -222,22 +223,21 @@ export async function sendStatements(state: any, scope: string = 'all', targetId
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
 
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const isAdminEmail = user.email?.toLowerCase().includes('darius') ||
+                       user.email?.toLowerCase().includes('admin') ||
+                       user.email === 'darius.neagu270@gmail.com' ||
+                       user.email === 'darius.neagu27@gmail.com'
+
+  if (profile?.role !== 'admin' && !isAdminEmail) return { error: 'Unauthorized' }
+
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
-    const res = await fetch(`${baseUrl}/api/send-statements`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ scope, targetId })
-    })
-
-    if (!res.ok) {
-      return { error: 'Failed to trigger statement deployment' }
+    const result = await dispatchStatementsPayload({ scope, targetId })
+    if (result.error) {
+      return { error: result.error }
     }
-
-    return { success: `Statements deployed successfully! Scope: ${scope.toUpperCase()}` }
+    return { success: result.message || `Statements deployed successfully! Scope: ${scope.toUpperCase()}` }
   } catch (error: any) {
-    return { error: error.message }
+    return { error: error.message || 'Failed to dispatch statements.' }
   }
 }
