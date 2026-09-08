@@ -14,6 +14,7 @@ export default function ClientChart({ data }: { data: any[] }) {
 
   const formattedData = data.map(item => ({
     ...item,
+    current_value: Number(Number(item.current_value || 0).toFixed(2)),
     date: format(new Date(item.created_at), 'MMM dd, yyyy')
   }))
 
@@ -34,11 +35,15 @@ export default function ClientChart({ data }: { data: any[] }) {
             fontSize={12} 
             tickLine={false} 
             axisLine={false}
-            tickFormatter={(value) => `$${value.toLocaleString()}`}
+            tickFormatter={(value) => `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           />
           <Tooltip 
-            contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }}
+            contentStyle={{ backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }}
             itemStyle={{ color: '#fff' }}
+            formatter={(value: any) => [
+              `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              'Current Value'
+            ]}
           />
           <Line 
             type="monotone" 

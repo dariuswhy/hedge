@@ -364,3 +364,176 @@ export async function purgeFakeDataAction() {
   revalidatePath('/admin')
   return { success: 'All fake clients & demo hedge pools have been purged! Fund reset to clean state.' }
 }
+
+export async function takeHedgePoolProfitCutAction(
+  poolId: string,
+  percentage: number,
+  destination: 'pocket' | 'reinvest_hedge'
+) {
+  if (isNaN(percentage) || percentage <= 0 || percentage > 100) {
+    return { error: 'Please enter a valid profit cut percentage between 1% and 100%.' }
+  }
+  if (!poolId) {
+    return { error: 'Invalid Hedge Pool.' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const supabaseAdmin = createAdminClient()
+  const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single()
+  const isAdm = profile?.role === 'admin' ||
+                user.email === 'darius.neagu27@gmail.com' ||
+                user.email === 'daudionica@gmail.com'
+  if (!isAdm) return { error: 'Unauthorized' }
+
+  // 1. Fetch pool
+  const { data: pool, error: poolErr } = await supabaseAdmin.from('hedge_pools').select('*').eq('id', poolId).single()
+  if (poolErr || !pool) return { error: 'Hedge Pool not found.' }
+
+  const totalCapital = Number(pool.total_capital || 0)
+  const currentValue = Number(pool.current_value || 0)
+  const netProfit = Math.max(0, currentValue - totalCapital)
+
+  if (netProfit <= 0) {
+    return { error: 'This Hedge Pool has no net profit to cut. Current Valuation must be higher than Initial Principal.' }
+  }
+
+  const cutAmount = parseFloat(((netProfit * percentage) / 100).toFixed(2))
+  if (cutAmount <= 0) {
+    return { error: 'Calculated profit cut amount is $0.00.' }
+  }
+
+  // 2. Fetch current pool members
+  const { data: members } = await supabaseAdmin.from('hedge_pool_members').select('*').eq('pool_id', poolId)
+  if (!members || members.length === 0) {
+    return { error: 'No investor members found in this Hedge Pool.' }
+  }
+
+  // Calculate each member's profit contribution
+  const totalMemberProfit = members.reduce((acc: number, m: any) => {
+    const p = Math.max(0, Number(m.current_member_value || 0) - Number(m.allocated_amount || 0))
+    return acc + p
+  }, 0)
+
+  if (destination === 'pocket') {
+    // DESTINATION A: Extract into Founders Profit Pocket Vault
+    const newPoolValue = Math.max(totalCapital, currentValue - cutAmount)
+    await supabaseAdmin.from('hedge_pools').update({ current_value: newPoolValue }).eq('id', poolId)
+
+    // Reduce members' current_member_value proportionally by their profit share
+    for (const m of members) {
+      const mProfit = Math.max(0, Number(m.current_member_value || 0) - Number(m.allocated_amount || 0))
+      const mCut = totalMemberProfit > 0 ? (mProfit / totalMemberProfit) * cutAmount : 0
+      const newMVal = Math.max(Number(m.allocated_amount || 0), Number(m.current_member_value || 0) - mCut)
+      await supabaseAdmin.from('hedge_pool_members').update({ current_member_value: parseFloat(newMVal.toFixed(2)) }).eq('id', m.id)
+    }
+
+    // Insert fee transaction so profitPocketBalance increases
+    await supabaseAdmin.from('transactions').insert({
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      type: 'fee',
+      amount: cutAmount
+    })
+
+    // Log trade audit
+    await supabaseAdmin.from('hedge_pool_trades').insert({
+      id: crypto.randomUUID(),
+      pool_id: poolId,
+      asset_symbol: 'PROFIT_CUT_VAULT',
+      trade_type: 'PROFIT_TAKE',
+      position_size: cutAmount,
+      entry_price: 1,
+      exit_price: 1,
+      pnl_amount: cutAmount,
+      notes: `Harvested ${percentage}% profit cut ($${cutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) into Founders Profit Pocket Vault.`
+    })
+
+    revalidatePath('/admin')
+    revalidatePath('/client')
+    return {
+      success: `Successfully harvested ${percentage}% profit cut ($${cutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) directly into Founders Profit Pocket Vault!`
+    }
+  } else {
+    // DESTINATION B: Reinvest into this Hedge Pool as Founders Profit Pocket (Equity Stake)
+    const { data: pocketProfiles } = await supabaseAdmin.from('profiles').select('*').eq('email', 'founders.pocket@hedge.internal')
+    let pocketProfile = pocketProfiles && pocketProfiles.length > 0 ? pocketProfiles[0] : null
+    if (!pocketProfile) {
+      pocketProfile = profile
+    }
+
+    // Reduce client members' current_member_value proportionally
+    for (const m of members) {
+      if (m.user_id === pocketProfile.id) continue
+      const mProfit = Math.max(0, Number(m.current_member_value || 0) - Number(m.allocated_amount || 0))
+      const mCut = totalMemberProfit > 0 ? (mProfit / totalMemberProfit) * cutAmount : 0
+      const newMVal = Math.max(Number(m.allocated_amount || 0), Number(m.current_member_value || 0) - mCut)
+      await supabaseAdmin.from('hedge_pool_members').update({ current_member_value: parseFloat(newMVal.toFixed(2)) }).eq('id', m.id)
+    }
+
+    // Update or add Founders Profit Pocket as a member
+    const existingPocketMember = members.find((m: any) => m.user_id === pocketProfile.id)
+    if (existingPocketMember) {
+      const newAlloc = Number(existingPocketMember.allocated_amount || 0) + cutAmount
+      const newVal = Number(existingPocketMember.current_member_value || 0) + cutAmount
+      await supabaseAdmin.from('hedge_pool_members').update({
+        allocated_amount: parseFloat(newAlloc.toFixed(2)),
+        current_member_value: parseFloat(newVal.toFixed(2))
+      }).eq('id', existingPocketMember.id)
+    } else {
+      await supabaseAdmin.from('hedge_pool_members').insert({
+        id: crypto.randomUUID(),
+        pool_id: poolId,
+        user_id: pocketProfile.id,
+        allocated_amount: cutAmount,
+        split_percentage: 0,
+        current_member_value: cutAmount
+      })
+    }
+
+    // Pool's total capital increases by cutAmount because the profit is now capitalized as member principal
+    const newTotalCapital = totalCapital + cutAmount
+    await supabaseAdmin.from('hedge_pools').update({ total_capital: newTotalCapital }).eq('id', poolId)
+
+    // Recalculate split percentage for all members based on newTotalCapital
+    const { data: updatedMembers } = await supabaseAdmin.from('hedge_pool_members').select('*').eq('pool_id', poolId)
+    if (updatedMembers && newTotalCapital > 0) {
+      for (const m of updatedMembers) {
+        const splitPct = (Number(m.allocated_amount || 0) / newTotalCapital) * 100
+        await supabaseAdmin.from('hedge_pool_members').update({
+          split_percentage: parseFloat(splitPct.toFixed(4))
+        }).eq('id', m.id)
+      }
+    }
+
+    // Record transaction
+    await supabaseAdmin.from('transactions').insert({
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      type: 'pocket_reinvest',
+      amount: cutAmount
+    })
+
+    // Log trade audit
+    await supabaseAdmin.from('hedge_pool_trades').insert({
+      id: crypto.randomUUID(),
+      pool_id: poolId,
+      asset_symbol: 'PROFIT_CUT_EQUITY',
+      trade_type: 'PROFIT_TAKE',
+      position_size: cutAmount,
+      entry_price: 1,
+      exit_price: 1,
+      pnl_amount: 0,
+      notes: `Reinvested ${percentage}% profit cut ($${cutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) as Founders Profit Pocket equity stake in this hedge.`
+    })
+
+    revalidatePath('/admin')
+    revalidatePath('/client')
+    return {
+      success: `Successfully reinvested ${percentage}% profit cut ($${cutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) into ${pool.name} as Founders Profit Pocket equity stake!`
+    }
+  }
+}
+

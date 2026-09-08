@@ -16,7 +16,10 @@ import {
   FileSpreadsheet,
   Check,
   AlertTriangle,
-  Trash2
+  Trash2,
+  Coins,
+  Search,
+  ChevronDown
 } from 'lucide-react'
 import { HedgePool, HedgePoolMember, getUnallocatedFreeCapital } from '@/lib/hedge-pools'
 import {
@@ -24,7 +27,8 @@ import {
   addMembersToHedgePoolAction,
   updateHedgePoolValuationAction,
   addHedgePoolTradeAction,
-  deleteHedgePoolAction
+  deleteHedgePoolAction,
+  takeHedgePoolProfitCutAction
 } from './hedge-actions'
 
 interface ClientOption {
@@ -39,12 +43,137 @@ interface HedgePoolsManagerProps {
   clients: ClientOption[]
 }
 
+function SearchableInvestorSelect({
+  value,
+  onChange,
+  clients,
+  selectedUserIds,
+}: {
+  value: string
+  onChange: (userId: string) => void
+  clients: ClientOption[]
+  selectedUserIds: string[]
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+
+  const selectedClient = clients.find(c => c.id === value)
+  const isAdmin = selectedClient && ((selectedClient as any).role === 'admin' || selectedClient.email?.includes('admin') || selectedClient.email?.includes('darius'))
+  const isPocket = selectedClient && (selectedClient.email?.includes('pocket') || selectedClient.full_name?.includes('Pocket'))
+  const displayName = selectedClient
+    ? (isPocket ? '👑 Founders Profit Pocket' : isAdmin ? `${selectedClient.full_name || 'Darius'} (Admin)` : (selectedClient.full_name || selectedClient.email))
+    : 'Select Investor...'
+
+  const filteredClients = clients.filter(c => {
+    const q = searchTerm.toLowerCase().trim()
+    if (!q) return true
+    const nameMatch = (c.full_name || '').toLowerCase().includes(q)
+    const emailMatch = (c.email || '').toLowerCase().includes(q)
+    return nameMatch || emailMatch
+  })
+
+  return (
+    <div className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 bg-black/60 border border-white/10 hover:border-white/20 rounded-xl text-xs text-left text-white focus:outline-none focus:border-blue-500 flex items-center justify-between gap-2 transition-all"
+      >
+        <div className="flex items-center gap-2 truncate">
+          <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold text-gray-300">
+            {selectedClient?.full_name ? selectedClient.full_name[0].toUpperCase() : '?'}
+          </div>
+          <span className="truncate font-medium">{displayName}</span>
+          {selectedClient?.email && (
+            <span className="text-[10px] text-gray-500 truncate hidden sm:inline">({selectedClient.email})</span>
+          )}
+        </div>
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-[#0d131f] border border-white/15 rounded-2xl shadow-2xl p-2 space-y-2 animate-in fade-in zoom-in-95 max-h-64 flex flex-col">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                autoFocus
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by name or email..."
+                className="w-full pl-8 pr-3 py-1.5 bg-black/70 border border-white/10 rounded-xl text-xs text-white placeholder:text-gray-500 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div className="overflow-y-auto space-y-1 flex-1 pr-1 custom-scrollbar">
+              {filteredClients.length === 0 ? (
+                <div className="p-3 text-center text-xs text-gray-500">
+                  No investors matching "{searchTerm}"
+                </div>
+              ) : (
+                filteredClients.map((c) => {
+                  const isSelectedHere = c.id === value
+                  const isSelectedElsewhere = selectedUserIds.includes(c.id) && !isSelectedHere
+                  const isAdm = (c as any).role === 'admin' || c.email?.includes('admin') || c.email?.includes('darius')
+                  const isPkt = c.email?.includes('pocket') || c.full_name?.includes('Pocket')
+                  const label = isPkt
+                    ? 'Founders Profit Pocket'
+                    : isAdm
+                    ? `${c.full_name || 'Darius'} (Admin)`
+                    : (c.full_name || 'Investor')
+
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      disabled={isSelectedElsewhere}
+                      onClick={() => {
+                        onChange(c.id)
+                        setIsOpen(false)
+                        setSearchTerm('')
+                      }}
+                      className={`w-full px-3 py-2 rounded-xl text-left text-xs flex items-center justify-between transition-colors ${
+                        isSelectedHere
+                          ? 'bg-blue-600/30 text-blue-200 border border-blue-500/30'
+                          : isSelectedElsewhere
+                          ? 'opacity-40 cursor-not-allowed text-gray-500'
+                          : 'hover:bg-white/10 text-gray-200'
+                      }`}
+                    >
+                      <div className="truncate">
+                        <div className="font-semibold truncate flex items-center gap-1.5">
+                          {label}
+                          {isPkt && <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono">Founders</span>}
+                          {isAdm && !isPkt && <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono">Admin</span>}
+                        </div>
+                        <div className="text-[10px] text-gray-500 truncate">{c.email}</div>
+                      </div>
+                      {isSelectedHere && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0 ml-2" />}
+                      {isSelectedElsewhere && <span className="text-[10px] text-gray-500 shrink-0 ml-2">(Added)</span>}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerProps) {
   const [selectedPoolId, setSelectedPoolId] = useState<string>(pools[0]?.id || '')
   const [showCreatePoolModal, setShowCreatePoolModal] = useState(false)
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showValuationModal, setShowValuationModal] = useState(false)
   const [showAddTradeModal, setShowAddTradeModal] = useState(false)
+  const [showProfitCutModal, setShowProfitCutModal] = useState(false)
+  const [profitCutPercentage, setProfitCutPercentage] = useState('20')
+  const [profitCutDestination, setProfitCutDestination] = useState<'pocket' | 'reinvest_hedge'>('pocket')
+  const [isSubmittingProfitCut, setIsSubmittingProfitCut] = useState(false)
 
   // Persist selected pool across page reloads and tab changes
   useEffect(() => {
@@ -233,6 +362,30 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
     }
   }
 
+  const handleTakeProfitCutSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!activePool) return
+    const pct = parseFloat(profitCutPercentage)
+    if (isNaN(pct) || pct <= 0 || pct > 100) {
+      setStatusMessage({ type: 'error', text: 'Please enter a valid percentage between 1% and 100%.' })
+      return
+    }
+
+    setIsSubmittingProfitCut(true)
+    setStatusMessage(null)
+
+    const res = await takeHedgePoolProfitCutAction(activePool.id, pct, profitCutDestination)
+    setIsSubmittingProfitCut(false)
+
+    if (res.error) {
+      setStatusMessage({ type: 'error', text: res.error })
+    } else {
+      setStatusMessage({ type: 'success', text: res.success || 'Profit Cut Executed Successfully!' })
+      setShowProfitCutModal(false)
+      setTimeout(() => window.location.reload(), 1000)
+    }
+  }
+
   const addClientRow = () => {
     const unselected = clients.find(c => !selectedClientAllocations.some(a => a.userId === c.id))
     if (unselected) {
@@ -361,6 +514,17 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
               >
                 <Users className="w-3.5 h-3.5" />
                 Merge Investors & Split Amounts
+              </button>
+              <button
+                onClick={() => {
+                  setProfitCutPercentage('20')
+                  setProfitCutDestination('pocket')
+                  setShowProfitCutModal(true)
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-xs font-medium flex items-center gap-2 transition-all shadow-lg"
+              >
+                <Coins className="w-3.5 h-3.5" />
+                Take Profit Cut (%)
               </button>
               <button
                 onClick={handleDeletePool}
@@ -721,22 +885,12 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
                       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                         <div className="w-full sm:w-1/2">
                           <label className="text-[10px] text-gray-400 uppercase font-semibold block mb-1">Investor #{index + 1}</label>
-                          <select
+                          <SearchableInvestorSelect
                             value={item.userId}
-                            onChange={(e) => updateClientRow(index, 'userId', e.target.value)}
-                            className="w-full px-3 py-2 bg-black/60 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
-                          >
-                            {clients.map(c => {
-                              const isSelectedElsewhere = selectedClientAllocations.some((alloc, i) => i !== index && alloc.userId === c.id)
-                              const isAdmin = (c as any).role === 'admin' || c.email?.includes('admin') || c.email?.includes('darius')
-                              const name = isAdmin ? `${c.full_name || 'Darius'} (Admin)` : (c.full_name || c.email)
-                              return (
-                                <option key={c.id} value={c.id} disabled={isSelectedElsewhere}>
-                                  {name} {isSelectedElsewhere ? '(Already Added)' : ''}
-                                </option>
-                              )
-                            })}
-                          </select>
+                            onChange={(id) => updateClientRow(index, 'userId', id)}
+                            clients={clients}
+                            selectedUserIds={selectedClientAllocations.map(a => a.userId)}
+                          />
                         </div>
 
                         <div className="w-full sm:w-1/3">
@@ -1006,6 +1160,191 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Take Profit Cut (%) */}
+      {showProfitCutModal && activePool && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-card rounded-3xl p-8 max-w-lg w-full space-y-6 border border-white/10 shadow-2xl relative animate-in fade-in">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Coins className="w-5 h-5 text-amber-400" />
+                  Take Profit Cut on "{activePool.name}"
+                </h3>
+                <p className="text-xs text-gray-400">Harvest percentage-based profit cuts into the Vault or compound as Hedge equity.</p>
+              </div>
+              <button
+                onClick={() => setShowProfitCutModal(false)}
+                className="w-8 h-8 rounded-full bg-white/10 text-gray-400 hover:text-white flex items-center justify-center text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Profit Snapshot Card */}
+            {(() => {
+              const currentVal = Number(activePool.current_value || 0)
+              const principal = Number(activePool.total_capital || 0)
+              const netProfit = Math.max(0, currentVal - principal)
+              const cutPct = Math.min(100, Math.max(0, parseFloat(profitCutPercentage) || 0))
+              const cutAmount = (netProfit * cutPct) / 100
+
+              return (
+                <form onSubmit={handleTakeProfitCutSubmit} className="space-y-5">
+                  <div className="grid grid-cols-3 gap-3 p-3.5 bg-black/40 border border-white/10 rounded-2xl text-center">
+                    <div>
+                      <span className="text-[10px] text-gray-400 uppercase font-semibold block">Total Principal</span>
+                      <span className="text-sm font-bold text-gray-300 font-mono">${principal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 uppercase font-semibold block">Current Value</span>
+                      <span className="text-sm font-bold text-white font-mono">${currentVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-emerald-400 uppercase font-semibold block">Net Profit</span>
+                      <span className="text-sm font-bold text-emerald-400 font-mono">+${netProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+
+                  {netProfit <= 0 ? (
+                    <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs text-center">
+                      This pool currently has no net profit above initial principal. Mark-to-market trade profits must exist to harvest a profit cut.
+                    </div>
+                  ) : (
+                    <>
+                      {/* Percentage Input & Presets */}
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Profit Cut Percentage (%)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            step="0.1"
+                            required
+                            value={profitCutPercentage}
+                            onChange={(e) => setProfitCutPercentage(e.target.value)}
+                            placeholder="e.g. 20"
+                            className="w-full px-4 py-2.5 bg-black/60 border border-white/10 rounded-xl text-sm text-white font-mono focus:outline-none focus:border-amber-500"
+                          />
+                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">%</span>
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div className="flex items-center gap-2 pt-1">
+                          {['10', '20', '30', '50'].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setProfitCutPercentage(preset)}
+                              className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
+                                profitCutPercentage === preset
+                                  ? 'bg-amber-500 text-black shadow-md'
+                                  : 'bg-white/5 hover:bg-white/10 text-gray-300'
+                              }`}
+                            >
+                              {preset}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Calculated Cut Banner */}
+                      <div className="p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] text-amber-300 uppercase font-bold tracking-wider block">Harvested Amount</span>
+                          <span className="text-xs text-gray-400">{cutPct}% of ${netProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} profit</span>
+                        </div>
+                        <span className="text-2xl font-bold font-mono text-amber-400">
+                          ${cutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      {/* Destination Choice (2 Options requested by user) */}
+                      <div className="space-y-2.5">
+                        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Choose Profit Cut Destination
+                        </label>
+
+                        <div className="grid grid-cols-1 gap-3">
+                          {/* Option 1: Direct to Founders Pocket */}
+                          <div
+                            onClick={() => setProfitCutDestination('pocket')}
+                            className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 ${
+                              profitCutDestination === 'pocket'
+                                ? 'bg-amber-500/15 border-amber-500/50 shadow-lg'
+                                : 'bg-black/40 border-white/10 hover:border-white/20'
+                            }`}
+                          >
+                            <div className={`w-4 h-4 rounded-full mt-0.5 border flex items-center justify-center ${
+                              profitCutDestination === 'pocket' ? 'border-amber-400 bg-amber-400' : 'border-gray-500'
+                            }`}>
+                              {profitCutDestination === 'pocket' && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-white block">
+                                Deposit directly into Founders Pocket Vault
+                              </span>
+                              <span className="text-[11px] text-gray-400 block mt-0.5">
+                                Skims and extracts cash into your liquid Founders Pocket reserve, available immediately for partner payouts or external transfers.
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Option 2: Reinvest in same Hedge as Founders Profit Pocket */}
+                          <div
+                            onClick={() => setProfitCutDestination('reinvest_hedge')}
+                            className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 ${
+                              profitCutDestination === 'reinvest_hedge'
+                                ? 'bg-indigo-500/15 border-indigo-500/50 shadow-lg'
+                                : 'bg-black/40 border-white/10 hover:border-white/20'
+                            }`}
+                          >
+                            <div className={`w-4 h-4 rounded-full mt-0.5 border flex items-center justify-center ${
+                              profitCutDestination === 'reinvest_hedge' ? 'border-indigo-400 bg-indigo-400' : 'border-gray-500'
+                            }`}>
+                              {profitCutDestination === 'reinvest_hedge' && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-white block flex items-center gap-1.5">
+                                Reinvest in this Hedge as "Founders Profit Pocket"
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono">Equity Stake</span>
+                              </span>
+                              <span className="text-[11px] text-gray-400 block mt-0.5">
+                                Retains the money inside this fund. Founders Profit Pocket is treated as a client/co-investor with its own ownership % to compound profits.
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Modal Actions */}
+                      <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => setShowProfitCutModal(false)}
+                          className="px-5 py-2.5 rounded-xl bg-white/10 text-white text-xs font-medium hover:bg-white/20"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isSubmittingProfitCut || cutAmount <= 0}
+                          className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-bold text-xs tracking-wide transition-all shadow-lg disabled:opacity-50"
+                        >
+                          {isSubmittingProfitCut ? 'Executing Cut...' : `Confirm Harvest ($${cutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </form>
+              )
+            })()}
           </div>
         </div>
       )}

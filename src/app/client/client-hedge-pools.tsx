@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Layers, ArrowUpDown, ShieldCheck, TrendingUp, PieChart, Users } from 'lucide-react'
-import { HedgePool, HedgePoolMember } from '@/lib/hedge-pools'
+import { Layers, ShieldCheck, TrendingUp, Activity, CheckCircle2 } from 'lucide-react'
+import { HedgePool } from '@/lib/hedge-pools'
 
 interface ClientHedgePoolsProps {
   pools: HedgePool[]
@@ -11,36 +11,16 @@ interface ClientHedgePoolsProps {
 
 export default function ClientHedgePools({ pools, currentUserId }: ClientHedgePoolsProps) {
   const [selectedPoolId, setSelectedPoolId] = useState<string>(pools[0]?.id || '')
-  const [sortCoInvestorsBy, setSortCoInvestorsBy] = useState<'share' | 'current' | 'name'>('share')
 
   const activePool = pools.find(p => p.id === selectedPoolId) || pools[0]
 
   // Find user's member row in active pool
   const userMember = activePool?.members?.find(m => m.user_id === currentUserId) || activePool?.members?.[0]
 
-  const userSharePct = Number(userMember?.split_percentage || 25)
-  const userAllocated = Number(userMember?.allocated_amount || 50000)
-  const userCurrentVal = Number(userMember?.current_member_value || 62500)
+  const userAllocated = Number(userMember?.allocated_amount || 0)
+  const userCurrentVal = Number(userMember?.current_member_value || 0)
   const userProfit = userCurrentVal - userAllocated
   const userRoiPct = userAllocated > 0 ? (userProfit / userAllocated) * 100 : 0
-
-  // Sorted co-investor list (anonymized or full depending on preference)
-  const sortedMembers = activePool?.members ? [...activePool.members].sort((a, b) => {
-    let valA = 0
-    let valB = 0
-    if (sortCoInvestorsBy === 'share') {
-      valA = Number(a.split_percentage)
-      valB = Number(b.split_percentage)
-    } else if (sortCoInvestorsBy === 'current') {
-      valA = Number(a.current_member_value)
-      valB = Number(b.current_member_value)
-    } else if (sortCoInvestorsBy === 'name') {
-      const nameA = a.profile?.full_name || 'Investor'
-      const nameB = b.profile?.full_name || 'Investor'
-      return nameA.localeCompare(nameB)
-    }
-    return valB - valA
-  }) : []
 
   return (
     <div className="space-y-8">
@@ -49,9 +29,9 @@ export default function ClientHedgePools({ pools, currentUserId }: ClientHedgePo
           <Layers className="w-5 h-5 text-blue-400" />
           <span className="text-xs font-semibold uppercase tracking-wider text-blue-300">Pooled Holdings Breakdown</span>
         </div>
-        <h2 className="text-3xl font-light tracking-tight text-white">My Pooled Hedges & Split Allocations</h2>
+        <h2 className="text-3xl font-light tracking-tight text-white">My Pooled Hedge Allocations</h2>
         <p className="text-gray-400 text-sm mt-1">
-          Detailed breakdown of hedge accounts you participate in, your fractional split share, and fund-level performance metrics.
+          Detailed performance metrics of the hedge accounts you participate in and live trade allocations.
         </p>
       </div>
 
@@ -74,12 +54,12 @@ export default function ClientHedgePools({ pools, currentUserId }: ClientHedgePo
                 <span className={`text-xs font-bold truncate ${isSelected ? 'text-blue-300' : 'text-white'}`}>
                   {p.name}
                 </span>
-                <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full font-mono">
-                  {Number(m?.split_percentage || 25).toFixed(1)}% Share
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
+                  <CheckCircle2 className="w-2.5 h-2.5" /> Active
                 </span>
               </div>
-              <div className="text-sm font-semibold text-white">
-                ${Number(m?.current_member_value || 0).toLocaleString()}
+              <div className="text-sm font-semibold text-white font-mono">
+                ${Number(m?.current_member_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             </button>
           )
@@ -91,128 +71,127 @@ export default function ClientHedgePools({ pools, currentUserId }: ClientHedgePo
           {/* Header Card */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-white/10">
             <div>
-              <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                {activePool.strategy}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                  {activePool.strategy}
+                </span>
+                <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                  Status: {activePool.status}
+                </span>
+              </div>
               <h3 className="text-2xl font-bold text-white mt-2">{activePool.name}</h3>
               <p className="text-gray-400 text-sm mt-1">{activePool.description}</p>
             </div>
-            <div className="text-right">
-              <span className="text-xs text-gray-400 block uppercase font-semibold">Target Yield</span>
+            <div className="text-left md:text-right">
+              <span className="text-xs text-gray-400 block uppercase font-semibold">Target Fund Yield</span>
               <span className="text-2xl font-bold text-emerald-400">{activePool.target_return}</span>
             </div>
           </div>
 
-          {/* User's Split Ownership Highlights */}
+          {/* User's Personal Performance Highlights (No Fund Total Or % Split Excluded) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
-              <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">My Split Share</span>
-              <span className="text-3xl font-bold text-blue-400 font-mono">
-                {userSharePct.toFixed(1)}%
-              </span>
-              <span className="text-[10px] text-gray-500 block mt-1">of ${Number(activePool.current_value).toLocaleString()} Pool</span>
-            </div>
-
-            <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
               <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">My Position Value</span>
-              <span className="text-3xl font-bold text-white font-mono">
+              <span className="text-2xl font-bold text-white font-mono">
                 ${userCurrentVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
+              <span className="text-[10px] text-emerald-400 block mt-1">Live Marked-to-Market</span>
             </div>
 
             <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
-              <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">My Allocated Capital</span>
-              <span className="text-3xl font-bold text-gray-300 font-mono">
+              <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">My Allocated Principal</span>
+              <span className="text-2xl font-bold text-gray-300 font-mono">
                 ${userAllocated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
+              <span className="text-[10px] text-gray-500 block mt-1">Dedicated Invested Capital</span>
             </div>
 
             <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
               <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">My Net Profit</span>
-              <span className={`text-3xl font-bold font-mono ${userProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              <span className={`text-2xl font-bold font-mono ${userProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                 {userProfit >= 0 ? '+' : ''}${userProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                <span className="text-xs ml-1 font-normal">({userRoiPct.toFixed(1)}%)</span>
               </span>
+              <span className="text-[10px] text-gray-500 block mt-1">Cumulative Generated Gain</span>
+            </div>
+
+            <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
+              <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">My Return on Investment</span>
+              <span className={`text-2xl font-bold font-mono ${userRoiPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {userRoiPct >= 0 ? '+' : ''}{userRoiPct.toFixed(2)}%
+              </span>
+              <span className="text-[10px] text-gray-500 block mt-1">Net Realized ROI</span>
             </div>
           </div>
 
-          {/* Co-Investors Split Ranking */}
+          {/* Active Fund Trades & Execution Log */}
           <div className="space-y-4 pt-4 border-t border-white/10">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h4 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Users className="w-5 h-5 text-indigo-400" />
-                  Pool Co-Investor Split Structure
+                  <Activity className="w-5 h-5 text-blue-400" />
+                  Active Trades & Execution Log
                 </h4>
                 <p className="text-xs text-gray-400">
-                  Transparency overview of investor capital splits in this hedge pool.
+                  Real-time audit log of active positions and trade executions managed by fund managers.
                 </p>
               </div>
+            </div>
 
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-gray-400 flex items-center gap-1">
-                  <ArrowUpDown className="w-3.5 h-3.5" /> Sort By:
-                </span>
-                <select
-                  value={sortCoInvestorsBy}
-                  onChange={(e) => setSortCoInvestorsBy(e.target.value as any)}
-                  className="bg-black/50 border border-white/10 rounded-xl px-3 py-1.5 text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="share">Ownership Split %</option>
-                  <option value="current">Holding Value ($)</option>
-                  <option value="name">Investor Name</option>
-                </select>
+            {(!activePool.trades || activePool.trades.length === 0) ? (
+              <div className="p-8 text-center bg-black/30 rounded-2xl border border-dashed border-white/10 space-y-2">
+                <ShieldCheck className="w-8 h-8 text-emerald-400 mx-auto" />
+                <p className="text-sm text-gray-300 font-medium">Fund Capital Fully Deployed & Hedged</p>
+                <p className="text-xs text-gray-500 max-w-md mx-auto">
+                  Positions are systematically rebalanced according to the {activePool.strategy} strategy mandate.
+                </p>
               </div>
-            </div>
-
-            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-white/5 text-gray-400 text-xs uppercase tracking-wider font-semibold border-b border-white/10">
-                  <tr>
-                    <th className="py-3.5 px-4">Investor</th>
-                    <th className="py-3.5 px-4">Split Share %</th>
-                    <th className="py-3.5 px-4">Allocated Principal</th>
-                    <th className="py-3.5 px-4">Current Valuation</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 text-gray-200">
-                  {sortedMembers.map((m) => {
-                    const isYou = m.user_id === currentUserId
-                    const pct = Number(m.split_percentage)
-                    const currentVal = Number(m.current_member_value)
-                    const allocated = Number(m.allocated_amount)
-                    return (
-                      <tr key={m.id} className={`hover:bg-white/5 transition-colors ${isYou ? 'bg-blue-900/20' : ''}`}>
-                        <td className="py-4 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
-                              isYou ? 'bg-blue-500 text-white shadow-lg' : 'bg-white/10 text-gray-300'
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-white/5 text-gray-400 uppercase tracking-wider font-semibold border-b border-white/10">
+                    <tr>
+                      <th className="py-3 px-4">Asset</th>
+                      <th className="py-3 px-4">Type</th>
+                      <th className="py-3 px-4">Entry / Exit</th>
+                      <th className="py-3 px-4">Realized PnL</th>
+                      <th className="py-3 px-4">Strategy Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-gray-200 font-mono">
+                    {activePool.trades.map((t) => {
+                      const isProfit = t.pnl_amount >= 0
+                      return (
+                        <tr key={t.id} className="hover:bg-white/5">
+                          <td className="py-3 px-4 font-bold text-white">
+                            {t.asset_symbol}
+                          </td>
+                          <td className="py-3 px-4 font-sans">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              t.trade_type === 'BUY_LONG'
+                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                : t.trade_type === 'PROFIT_TAKE'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                             }`}>
-                              {isYou ? 'YOU' : (m.profile?.full_name || 'I')[0]}
-                            </div>
-                            <div>
-                              <span className="font-semibold text-white flex items-center gap-2">
-                                {isYou ? `${m.profile?.full_name || 'You'} (Your Account)` : (m.profile?.full_name || 'Verified Co-Investor')}
-                                {isYou && <span className="px-2 py-0.5 rounded-full text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30">Primary</span>}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 font-mono font-bold text-blue-400">
-                          {pct.toFixed(1)}%
-                        </td>
-                        <td className="py-4 px-4 font-mono text-gray-300">
-                          ${allocated.toLocaleString()}
-                        </td>
-                        <td className="py-4 px-4 font-mono font-bold text-white">
-                          ${currentVal.toLocaleString()}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+                              {t.trade_type}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-gray-400">
+                            {t.entry_price ? `$${Number(t.entry_price).toFixed(2)}` : '-'} / {t.exit_price ? `$${Number(t.exit_price).toFixed(2)}` : '-'}
+                          </td>
+                          <td className={`py-3 px-4 font-bold ${isProfit ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {isProfit ? '+' : ''}${Number(t.pnl_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-3 px-4 font-sans text-gray-400 truncate max-w-[240px]">
+                            {t.notes || '-'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
