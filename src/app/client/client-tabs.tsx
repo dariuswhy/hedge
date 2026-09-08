@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -45,6 +45,35 @@ export default function ClientTabs({
   userTransactions = []
 }: ClientTabsProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'hedges' | 'activity' | 'reports'>('overview')
+
+  // Persist active tab across page refreshes and navigation
+  useEffect(() => {
+    const validTabs = ['overview', 'hedges', 'activity', 'reports']
+    const searchParams = new URLSearchParams(window.location.search)
+    const tabParam = searchParams.get('tab')
+    if (tabParam && validTabs.includes(tabParam)) {
+      setActiveTab(tabParam as any)
+      localStorage.setItem('hedge_client_active_tab', tabParam)
+      return
+    }
+
+    const saved = localStorage.getItem('hedge_client_active_tab')
+    if (saved && validTabs.includes(saved)) {
+      setActiveTab(saved as any)
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', saved)
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [])
+
+  const handleTabChange = (tabId: 'overview' | 'hedges' | 'activity' | 'reports') => {
+    setActiveTab(tabId)
+    localStorage.setItem('hedge_client_active_tab', tabId)
+    const url = new URL(window.location.href)
+    url.searchParams.set('tab', tabId)
+    window.history.replaceState({}, '', url.toString())
+  }
+
   const [timeframe, setTimeframe] = useState<'1M' | '3M' | '6M' | '1Y' | 'ALL'>('ALL')
   const [showPDFModal, setShowPDFModal] = useState(false)
 
@@ -67,7 +96,7 @@ export default function ClientTabs({
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => handleTabChange(tab.id as any)}
               className={`relative flex items-center gap-2.5 px-6 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all duration-300 whitespace-nowrap ${
                 isActive
                   ? 'text-white shadow-lg'

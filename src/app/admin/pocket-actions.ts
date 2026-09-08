@@ -98,7 +98,70 @@ export async function reinvestPocketIntoPoolAction(amount: number, poolId: strin
     return { error: `Failed to update pool: ${updatePoolErr.message}` }
   }
 
-  // 4. Record transaction in pocket audit log
+  // 4. Update or register pool member allocation for the injection
+  const { data: members } = await supabaseAdmin.from('hedge_pool_members').select('*').eq('pool_id', poolId)
+  
+  if (members && members.length > 0) {
+    const existingMember = members.find((m: any) => m.user_id === user.id)
+    if (existingMember) {
+      const updatedAllocated = Number(existingMember.allocated_amount || 0) + amount
+      const updatedValue = Number(existingMember.current_member_value || 0) + amount
+      await supabaseAdmin
+        .from('hedge_pool_members')
+        .update({
+          allocated_amount: updatedAllocated,
+          current_member_value: updatedValue
+        })
+        .eq('id', existingMember.id)
+    } else {
+      // Add admin as a new co-investor member in this pool
+      await supabaseAdmin.from('hedge_pool_members').insert({
+        id: crypto.randomUUID(),
+        pool_id: poolId,
+        user_id: user.id,
+        allocated_amount: amount,
+        split_percentage: 0,
+        current_member_value: amount
+      })
+    }
+
+    // Recalculate split percentages for all members with new capital
+    const { data: refreshedMembers } = await supabaseAdmin.from('hedge_pool_members').select('*').eq('pool_id', poolId)
+    if (refreshedMembers && newCapital > 0) {
+      for (const m of refreshedMembers) {
+        const splitPct = (Number(m.allocated_amount || 0) / newCapital) * 100
+        await supabaseAdmin
+          .from('hedge_pool_members')
+          .update({ split_percentage: parseFloat(splitPct.toFixed(4)) })
+          .eq('id', m.id)
+      }
+    }
+  } else {
+    // If pool has no members yet, create first member record
+    await supabaseAdmin.from('hedge_pool_members').insert({
+      id: crypto.randomUUID(),
+      pool_id: poolId,
+      user_id: user.id,
+      allocated_amount: amount,
+      split_percentage: 100,
+      current_member_value: amount
+    })
+  }
+
+  // 5. Log audit trade on the Hedge Pool
+  await supabaseAdmin.from('hedge_pool_trades').insert({
+    id: crypto.randomUUID(),
+    pool_id: poolId,
+    asset_symbol: 'POCKET_INJECTION',
+    trade_type: 'PROFIT_TAKE',
+    position_size: amount,
+    entry_price: 1,
+    exit_price: 1,
+    pnl_amount: 0,
+    notes: `Founders Pocket Capital Reinvestment ($${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) injected into pool.`,
+  })
+
+  // 6. Record transaction in pocket audit log
   const { error: insertErr } = await supabaseAdmin.from('transactions').insert({
     id: crypto.randomUUID(),
     user_id: user.id,
@@ -107,9 +170,10 @@ export async function reinvestPocketIntoPoolAction(amount: number, poolId: strin
   })
 
   if (insertErr) {
-    return { error: insertErr.message }
+    console.error('Transactions table insert error:', insertErr)
   }
 
   revalidatePath('/admin')
+  revalidatePath('/client')
   return { success: `Successfully transferred and reinvested $${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} from Pocket into ${pool.name}!` }
 }

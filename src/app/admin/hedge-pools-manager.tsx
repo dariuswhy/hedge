@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Layers,
   Plus,
@@ -46,14 +46,36 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
   const [showValuationModal, setShowValuationModal] = useState(false)
   const [showAddTradeModal, setShowAddTradeModal] = useState(false)
 
+  // Persist selected pool across page reloads and tab changes
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search)
+    const poolParam = searchParams.get('pool')
+    if (poolParam && pools.some(p => p.id === poolParam)) {
+      setSelectedPoolId(poolParam)
+      return
+    }
+    const saved = localStorage.getItem('hedge_admin_selected_pool')
+    if (saved && pools.some(p => p.id === saved)) {
+      setSelectedPoolId(saved)
+    }
+  }, [pools])
+
+  const handleSelectPool = (id: string) => {
+    setSelectedPoolId(id)
+    localStorage.setItem('hedge_admin_selected_pool', id)
+    const url = new URL(window.location.href)
+    url.searchParams.set('pool', id)
+    window.history.replaceState({}, '', url.toString())
+  }
+
   // Member sorting state inside pool
   const [memberSortBy, setMemberSortBy] = useState<'share' | 'allocated' | 'current' | 'name'>('share')
   const [memberSortOrder, setMemberSortOrder] = useState<'asc' | 'desc'>('desc')
 
   // Merge form state (up to 4+ clients selected with individual amounts)
   const [selectedClientAllocations, setSelectedClientAllocations] = useState<{ userId: string; amount: number | string }[]>([
-    { userId: clients[0]?.id || '', amount: 25000 },
-    { userId: clients[1]?.id || '', amount: 25000 },
+    { userId: clients[0]?.id || '', amount: '' },
+    { userId: clients[1]?.id || '', amount: '' },
   ])
 
   // Valuation state
@@ -64,14 +86,21 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
   const activePool = pools.find(p => p.id === selectedPoolId) || pools[0]
 
   const handleOpenMergeModal = (pool: HedgePool) => {
-    setSelectedPoolId(pool.id)
+    handleSelectPool(pool.id)
     if (pool.members && pool.members.length > 0) {
-      setSelectedClientAllocations(pool.members.map(m => ({ userId: m.user_id, amount: m.allocated_amount })))
+      setSelectedClientAllocations(
+        pool.members.map(m => ({
+          userId: m.user_id,
+          amount: Number(m.allocated_amount || 0) > 0 ? m.allocated_amount : ''
+        }))
+      )
     } else {
-      setSelectedClientAllocations([
-        { userId: clients[0]?.id || '', amount: 25000 },
-        { userId: clients[1]?.id || '', amount: 25000 },
-      ].filter(item => Boolean(item.userId)))
+      setSelectedClientAllocations(
+        clients.slice(0, 2).map(c => ({
+          userId: c.id,
+          amount: ''
+        }))
+      )
     }
     setShowMergeModal(true)
   }// Sorted member list
@@ -115,6 +144,13 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
   const handleMergeSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!activePool) return
+
+    const validMembers = selectedClientAllocations.filter(m => m.userId && Number(m.amount || 0) > 0)
+    if (validMembers.length === 0) {
+      setStatusMessage({ type: 'error', text: 'Please type an amount greater than $0 for at least one investor.' })
+      return
+    }
+
     setIsSubmitting(true)
     setStatusMessage(null)
 
@@ -123,9 +159,7 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
     formData.append(
       'membersJson',
       JSON.stringify(
-        selectedClientAllocations
-          .filter(m => m.userId && Number(m.amount || 0) > 0)
-          .map(m => ({ userId: m.userId, allocatedAmount: Number(m.amount || 0) }))
+        validMembers.map(m => ({ userId: m.userId, allocatedAmount: Number(m.amount || 0) }))
       )
     )
 
@@ -202,8 +236,7 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
   const addClientRow = () => {
     const unselected = clients.find(c => !selectedClientAllocations.some(a => a.userId === c.id))
     if (unselected) {
-      const freeCap = getUnallocatedFreeCapital(unselected.id, pools, unselected.totalInvested || 100000).free
-      setSelectedClientAllocations([...selectedClientAllocations, { userId: unselected.id, amount: Math.min(25000, freeCap || 25000) }])
+      setSelectedClientAllocations([...selectedClientAllocations, { userId: unselected.id, amount: '' }])
     }
   }
 
@@ -263,7 +296,7 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
           return (
             <button
               key={p.id}
-              onClick={() => setSelectedPoolId(p.id)}
+              onClick={() => handleSelectPool(p.id)}
               className={`px-5 py-3 rounded-2xl text-left transition-all min-w-[220px] flex flex-col justify-between border ${
                 isSelected
                   ? 'bg-gradient-to-br from-blue-900/40 to-indigo-900/40 border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.25)]'
@@ -323,7 +356,7 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
                 Update Pool Valuation
               </button>
               <button
-                onClick={() => setShowMergeModal(true)}
+                onClick={() => handleOpenMergeModal(activePool)}
                 className="px-4 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 text-xs font-medium flex items-center gap-2 transition-all"
               >
                 <Users className="w-3.5 h-3.5" />
@@ -416,7 +449,7 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
                 <Users className="w-8 h-8 text-gray-500 mx-auto" />
                 <p className="text-sm text-gray-400">No investors merged into this Hedge Account yet.</p>
                 <button
-                  onClick={() => setShowMergeModal(true)}
+                  onClick={() => handleOpenMergeModal(activePool)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-medium hover:bg-blue-500"
                 >
                   Merge Investors Now
@@ -711,9 +744,9 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
                           <input
                             type="number"
                             value={item.amount}
-                            onChange={(e) => updateClientRow(index, 'amount', e.target.value === '' ? '' : (parseFloat(e.target.value) || 0))}
-                            placeholder="0"
-                            className="w-full px-3 py-2 bg-black/60 border border-white/10 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                            onChange={(e) => updateClientRow(index, 'amount', e.target.value)}
+                            placeholder="Type amount"
+                            className="w-full px-3 py-2 bg-black/60 border border-white/10 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-blue-500 placeholder:text-gray-500"
                           />
                         </div>
 

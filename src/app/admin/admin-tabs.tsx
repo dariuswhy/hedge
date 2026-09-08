@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -58,6 +58,34 @@ export default function AdminTabs({
   profitCutTransactions = []
 }: AdminTabsProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'pocket' | 'pools' | 'search' | 'ledger' | 'statements' | 'requests'>('overview')
+
+  // Persist active tab across page refreshes and navigation
+  useEffect(() => {
+    const validTabs = ['overview', 'pocket', 'pools', 'search', 'ledger', 'statements', 'requests']
+    const searchParams = new URLSearchParams(window.location.search)
+    const tabParam = searchParams.get('tab')
+    if (tabParam && validTabs.includes(tabParam)) {
+      setActiveTab(tabParam as any)
+      localStorage.setItem('hedge_admin_active_tab', tabParam)
+      return
+    }
+
+    const saved = localStorage.getItem('hedge_admin_active_tab')
+    if (saved && validTabs.includes(saved)) {
+      setActiveTab(saved as any)
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', saved)
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [])
+
+  const handleTabChange = (tabId: 'overview' | 'pocket' | 'pools' | 'search' | 'ledger' | 'statements' | 'requests') => {
+    setActiveTab(tabId)
+    localStorage.setItem('hedge_admin_active_tab', tabId)
+    const url = new URL(window.location.href)
+    url.searchParams.set('tab', tabId)
+    window.history.replaceState({}, '', url.toString())
+  }
   
   const [dispatchScope, setDispatchScope] = useState<'all' | 'pool' | 'client'>('all')
   const [selectedTargetId, setSelectedTargetId] = useState<string>('')
@@ -173,7 +201,7 @@ export default function AdminTabs({
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => handleTabChange(tab.id as any)}
                 className={`relative w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-semibold tracking-wide transition-all duration-300 ${
                   isActive
                     ? 'text-white shadow-lg'
@@ -315,7 +343,7 @@ export default function AdminTabs({
                   </div>
 
                   <button
-                    onClick={() => setActiveTab('pocket')}
+                    onClick={() => handleTabChange('pocket')}
                     className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-purple-600 hover:from-amber-400 hover:to-purple-500 text-white font-semibold text-xs transition-all shadow-lg flex items-center gap-2 whitespace-nowrap"
                   >
                     Open Pocket Vault →

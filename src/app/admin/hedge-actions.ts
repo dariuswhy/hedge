@@ -151,6 +151,7 @@ export async function addMembersToHedgePoolAction(state: any, formData: FormData
     .eq('id', poolId)
 
   revalidatePath('/admin')
+  revalidatePath('/client')
   return { success: `Successfully merged ${membersData.length} investors into Hedge Pool!` }
 }
 
