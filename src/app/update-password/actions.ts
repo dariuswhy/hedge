@@ -24,7 +24,7 @@ export async function updatePassword(state: any, formData: FormData) {
   const { data: { user }, error: authError } = await supabase.auth.getUser()
 
   if (authError || !user) {
-    return { error: 'You are not authenticated or your session has expired.' }
+    return { error: 'Your session has expired or is invalid. Please open the activation/reset link directly from your email.' }
   }
 
   // Update their password

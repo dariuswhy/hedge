@@ -1,57 +1,76 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { type EmailOtpType } from '@supabase/supabase-js'
 
-export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
-  const type = searchParams.get('type')
+  const token_hash = searchParams.get('token_hash')
+  const type = searchParams.get('type') as EmailOtpType | null
   let next = searchParams.get('next')
 
-  if (code) {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) =>
-                cookieStore.set(name, value, options)
-              )
-            } catch (error) {
-              // Ignore server component cookie write warning
-            }
-          },
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host')
+  const proto = request.headers.get('x-forwarded-proto') || 'https'
+  const origin = host ? `${proto}://${host}` : 'https://www.captainhedge.com'
+
+  const isPasswordFlow = type === 'recovery' || type === 'invite' || next === '/update-password'
+  const redirectTarget = isPasswordFlow ? `${origin}/update-password` : `${origin}${next || '/client'}`
+
+  const response = NextResponse.redirect(redirectTarget)
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
         },
-      }
-    )
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-    
-    if (!error && data?.user) {
-      // If it's a recovery, password reset, or invite link -> ALWAYS force /update-password
-      if (type === 'recovery' || type === 'invite' || next === '/update-password') {
-        return NextResponse.redirect(`${origin}/update-password`)
-      }
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value)
+            response.cookies.set(name, value, options)
+          })
+        },
+      },
+    }
+  )
 
-      // Check role for smart redirect
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', data.user.id)
-        .single()
-
-      const targetPath = profile?.role === 'admin' ? '/admin' : '/client'
-      return NextResponse.redirect(`${origin}${next || targetPath}`)
+  if (token_hash && type) {
+    const { error } = await supabase.auth.verifyOtp({
+      type,
+      token_hash,
+    })
+    if (!error) {
+      return response
     }
   }
 
-  // If type is recovery or next is update-password, send directly to /update-password
-  if (type === 'recovery' || next === '/update-password') {
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    
+    if (!error && data?.user) {
+      if (!isPasswordFlow) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .single()
+
+        const targetPath = profile?.role === 'admin' ? '/admin' : '/client'
+        const customResponse = NextResponse.redirect(`${origin}${next || targetPath}`)
+        // Transfer cookies to customResponse
+        response.cookies.getAll().forEach(cookie => {
+          customResponse.cookies.set(cookie.name, cookie.value)
+        })
+        return customResponse
+      }
+      return response
+    }
+  }
+
+  // If implicit flow or recovery link without code parameter:
+  if (isPasswordFlow) {
     return NextResponse.redirect(`${origin}/update-password`)
   }
 
