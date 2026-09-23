@@ -1,10 +1,12 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function updatePassword(state: any, formData: FormData) {
   const password = formData.get('password') as string
   const confirmPassword = formData.get('confirmPassword') as string
+  const accessToken = (formData.get('accessToken') as string || '').trim()
 
   if (!password || !confirmPassword) {
     return { error: 'Please enter a password' }
@@ -20,21 +22,28 @@ export async function updatePassword(state: any, formData: FormData) {
 
   const supabase = await createClient()
 
-  // Verify the user is actually logged in (which they should be via the invite link)
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  // 1. Try standard server cookie session
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (authError || !user) {
-    return { error: 'Your session has expired or is invalid. Please open the activation/reset link directly from your email.' }
+  if (user) {
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) return { error: error.message }
+    return { success: 'Password updated successfully!' }
   }
 
-  // Update their password
-  const { error } = await supabase.auth.updateUser({
-    password: password
-  })
+  // 2. If cookie session missing, verify accessToken passed from client URL hash
+  if (accessToken) {
+    const supabaseAdmin = createAdminClient()
+    const { data: tokenUser } = await supabaseAdmin.auth.getUser(accessToken)
 
-  if (error) {
-    return { error: error.message }
+    if (tokenUser?.user) {
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(tokenUser.user.id, {
+        password: password
+      })
+      if (updateError) return { error: updateError.message }
+      return { success: 'Password updated successfully!' }
+    }
   }
 
-  return { success: 'Password updated successfully! You can now access your portfolio.' }
+  return { error: 'Your session has expired or is invalid. Please open the activation/reset link directly from your email.' }
 }

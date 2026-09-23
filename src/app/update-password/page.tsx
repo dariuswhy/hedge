@@ -8,6 +8,18 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { updatePassword } from './actions'
 
+function getTokensFromHash(): { accessToken: string | null; refreshToken: string | null } {
+  if (typeof window === 'undefined' || !window.location.hash) {
+    return { accessToken: null, refreshToken: null }
+  }
+  const hash = window.location.hash.replace(/^#/, '')
+  const params = new URLSearchParams(hash)
+  return {
+    accessToken: params.get('access_token'),
+    refreshToken: params.get('refresh_token'),
+  }
+}
+
 export default function UpdatePasswordPage() {
   const router = useRouter()
   const [password, setPassword] = useState('')
@@ -22,45 +34,44 @@ export default function UpdatePasswordPage() {
   useEffect(() => {
     const supabase = createClient()
 
-    // 1. If ?code= is present in URL, exchange it client-side as well
-    if (typeof window !== 'undefined') {
+    async function initSession() {
+      // 1. Check if tokens are present in URL hash (#access_token=...&refresh_token=...)
+      const { accessToken, refreshToken } = getTokensFromHash()
+      if (accessToken && refreshToken) {
+        setHasSession(true)
+        const { error: setErr } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        })
+        if (!setErr) {
+          setHasSession(true)
+          return
+        }
+      }
+
+      // 2. Check if PKCE code is in URL search params (?code=...)
       const searchParams = new URLSearchParams(window.location.search)
       const code = searchParams.get('code')
       if (code) {
-        supabase.auth.exchangeCodeForSession(code).then(({ data, error: codeErr }) => {
-          if (data?.session) {
-            setHasSession(true)
-            setError(null)
-          } else if (codeErr) {
-            console.warn('Code exchange client error:', codeErr.message)
-          }
-        })
+        const { data, error: codeErr } = await supabase.auth.exchangeCodeForSession(code)
+        if (!codeErr && data?.session) {
+          setHasSession(true)
+          return
+        }
       }
 
-      // If hash contains access_token, immediately acknowledge session
-      if (window.location.hash && window.location.hash.includes('access_token')) {
-        setHasSession(true)
-      }
+      // 3. Check existing browser session
+      const { data: { session } } = await supabase.auth.getSession()
+      setHasSession(!!session)
     }
 
-    // 2. Listen for auth state changes (e.g. PASSWORD_RECOVERY or SIGNED_IN from URL hash)
+    initSession()
+
+    // 4. Listen for auth state events
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         setHasSession(true)
         setError(null)
-      }
-    })
-
-    // 3. Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setHasSession(true)
-      } else {
-        // If not immediately present, wait briefly for Supabase to parse URL hash tokens
-        setTimeout(async () => {
-          const { data: { session: delayedSession } } = await supabase.auth.getSession()
-          setHasSession(!!delayedSession)
-        }, 1500)
       }
     })
 
@@ -91,11 +102,20 @@ export default function UpdatePasswordPage() {
 
     setIsPending(true)
     const supabase = createClient()
+    const { accessToken, refreshToken } = getTokensFromHash()
 
     try {
-      // 1. Attempt client-side password update (works with URL hash tokens from email links)
+      // 1. Ensure session is initialized in Supabase client if tokens exist in URL hash
+      if (accessToken && refreshToken) {
+        await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        })
+      }
+
+      // 2. Attempt client-side password update
       const { data: updateData, error: clientError } = await supabase.auth.updateUser({
-        password: password
+        password: password,
       })
 
       if (!clientError && updateData?.user) {
@@ -107,22 +127,27 @@ export default function UpdatePasswordPage() {
         return
       }
 
-      // 2. If client-side failed, attempt server action fallback
+      // 3. Fallback to server action with accessToken
       const formData = new FormData()
       formData.append('password', password)
       formData.append('confirmPassword', confirmPassword)
+      if (accessToken) {
+        formData.append('accessToken', accessToken)
+      }
+
       const serverRes = await updatePassword(null, formData)
 
       if (serverRes.success) {
         setSuccess('Password updated successfully! Redirecting to client portal...')
+        // If server updated user, also sign in or redirect
         setTimeout(() => {
           router.push('/client')
         }, 1400)
       } else {
         setError(
-          clientError?.message ||
           serverRes.error ||
-          'Session expired or link invalid. Please request a new link or contact the administrator.'
+          clientError?.message ||
+          'Session expired or link invalid. Please request a new activation link.'
         )
       }
     } catch (err: any) {
