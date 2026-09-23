@@ -25,9 +25,9 @@ export async function payoutFromPocketAction(amount: number, note?: string) {
   const { data: txs } = await supabaseAdmin.from('transactions').select('type, amount')
   const inflow = (txs || []).filter(t => (t.type || '').toLowerCase() === 'fee').reduce((acc, t) => acc + Math.abs(Number(t.amount || 0)), 0)
   const outflow = (txs || []).filter(t => ['pocket_payout', 'pocket_reinvest'].includes((t.type || '').toLowerCase())).reduce((acc, t) => acc + Math.abs(Number(t.amount || 0)), 0)
-  const available = Math.max(0, inflow - outflow)
+  const available = Math.round(Math.max(0, inflow - outflow) * 100) / 100
 
-  if (amount > available) {
+  if (amount > available + 0.0001) {
     return { error: `Insufficient pocket reserve. Available: $${available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
   }
 
@@ -67,13 +67,13 @@ export async function reinvestPocketIntoPoolAction(amount: number, poolId: strin
 
   if (!isAdm) return { error: 'Unauthorized' }
 
-  // 1. Calculate available pocket balance
+  // 1. Calculate available pocket balance with 2-decimal floating point precision
   const { data: txs } = await supabaseAdmin.from('transactions').select('type, amount')
   const inflow = (txs || []).filter(t => (t.type || '').toLowerCase() === 'fee').reduce((acc, t) => acc + Math.abs(Number(t.amount || 0)), 0)
   const outflow = (txs || []).filter(t => ['pocket_payout', 'pocket_reinvest'].includes((t.type || '').toLowerCase())).reduce((acc, t) => acc + Math.abs(Number(t.amount || 0)), 0)
-  const available = Math.max(0, inflow - outflow)
+  const available = Math.round(Math.max(0, inflow - outflow) * 100) / 100
 
-  if (amount > available) {
+  if (amount > available + 0.0001) {
     return { error: `Insufficient pocket reserve. Available: $${available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
   }
 
@@ -83,14 +83,22 @@ export async function reinvestPocketIntoPoolAction(amount: number, poolId: strin
     return { error: 'Selected Hedge Pool not found.' }
   }
 
-  // 3. Update pool total capital & current value
+  // 3. Resolve Founders Profit Pocket institutional profile
+  const { data: pocketProfiles } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('email', 'founders.pocket@hedge.internal')
+
+  const pocketUserId = (pocketProfiles && pocketProfiles.length > 0) ? pocketProfiles[0].id : user.id
+
+  // 4. Update pool total capital & current value
   const newCapital = Number(pool.total_capital || 0) + amount
   const newCurrentValue = Number(pool.current_value || 0) + amount
   const { error: updatePoolErr } = await supabaseAdmin
     .from('hedge_pools')
     .update({
-      total_capital: newCapital,
-      current_value: newCurrentValue
+      total_capital: parseFloat(newCapital.toFixed(2)),
+      current_value: parseFloat(newCurrentValue.toFixed(2))
     })
     .eq('id', poolId)
 
@@ -98,27 +106,27 @@ export async function reinvestPocketIntoPoolAction(amount: number, poolId: strin
     return { error: `Failed to update pool: ${updatePoolErr.message}` }
   }
 
-  // 4. Update or register pool member allocation for the injection
+  // 5. Update or register pool member allocation for Founders Profit Pocket
   const { data: members } = await supabaseAdmin.from('hedge_pool_members').select('*').eq('pool_id', poolId)
   
   if (members && members.length > 0) {
-    const existingMember = members.find((m: any) => m.user_id === user.id)
+    const existingMember = members.find((m: any) => m.user_id === pocketUserId)
     if (existingMember) {
       const updatedAllocated = Number(existingMember.allocated_amount || 0) + amount
       const updatedValue = Number(existingMember.current_member_value || 0) + amount
       await supabaseAdmin
         .from('hedge_pool_members')
         .update({
-          allocated_amount: updatedAllocated,
-          current_member_value: updatedValue
+          allocated_amount: parseFloat(updatedAllocated.toFixed(2)),
+          current_member_value: parseFloat(updatedValue.toFixed(2))
         })
         .eq('id', existingMember.id)
     } else {
-      // Add admin as a new co-investor member in this pool
+      // Add Founders Profit Pocket as a new co-investor member in this pool
       await supabaseAdmin.from('hedge_pool_members').insert({
         id: crypto.randomUUID(),
         pool_id: poolId,
-        user_id: user.id,
+        user_id: pocketUserId,
         allocated_amount: amount,
         split_percentage: 0,
         current_member_value: amount
@@ -141,14 +149,44 @@ export async function reinvestPocketIntoPoolAction(amount: number, poolId: strin
     await supabaseAdmin.from('hedge_pool_members').insert({
       id: crypto.randomUUID(),
       pool_id: poolId,
-      user_id: user.id,
+      user_id: pocketUserId,
       allocated_amount: amount,
       split_percentage: 100,
       current_member_value: amount
     })
   }
 
-  // 5. Log audit trade on the Hedge Pool
+  // 6. Update invested_capital for Founders Profit Pocket
+  const { data: currentCapRows } = await supabaseAdmin
+    .from('invested_capital')
+    .select('amount_invested')
+    .eq('user_id', pocketUserId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  const currentCap = currentCapRows && currentCapRows.length > 0 ? Number(currentCapRows[0].amount_invested) : 0
+  await supabaseAdmin.from('invested_capital').insert({
+    id: crypto.randomUUID(),
+    user_id: pocketUserId,
+    amount_invested: parseFloat((currentCap + amount).toFixed(2))
+  })
+
+  // 7. Update ledger for Founders Profit Pocket
+  const { data: currentLedgerRows } = await supabaseAdmin
+    .from('ledger')
+    .select('current_value')
+    .eq('user_id', pocketUserId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  const currentVal = currentLedgerRows && currentLedgerRows.length > 0 ? Number(currentLedgerRows[0].current_value) : 0
+  await supabaseAdmin.from('ledger').insert({
+    id: crypto.randomUUID(),
+    user_id: pocketUserId,
+    current_value: parseFloat((currentVal + amount).toFixed(2))
+  })
+
+  // 8. Log audit trade on the Hedge Pool
   await supabaseAdmin.from('hedge_pool_trades').insert({
     id: crypto.randomUUID(),
     pool_id: poolId,
@@ -161,10 +199,10 @@ export async function reinvestPocketIntoPoolAction(amount: number, poolId: strin
     notes: `Founders Pocket Capital Reinvestment ($${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) injected into pool.`,
   })
 
-  // 6. Record transaction in pocket audit log
+  // 9. Record transaction in pocket audit log
   const { error: insertErr } = await supabaseAdmin.from('transactions').insert({
     id: crypto.randomUUID(),
-    user_id: user.id,
+    user_id: pocketUserId,
     type: 'pocket_reinvest',
     amount: amount
   })

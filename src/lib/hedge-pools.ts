@@ -43,7 +43,8 @@ export interface HedgePoolTrade {
 export function getUnallocatedFreeCapital(
   userId: string,
   pools: HedgePool[],
-  totalUserCapital: number
+  totalUserCapital: number,
+  freeOverride?: number
 ): { allocated: number; free: number } {
   let allocated = 0
   for (const pool of pools) {
@@ -55,8 +56,10 @@ export function getUnallocatedFreeCapital(
     }
   }
 
-  const free = Math.max(0, totalUserCapital - allocated)
-  return { allocated, free }
+  const free = typeof freeOverride === 'number'
+    ? Math.round(freeOverride * 100) / 100
+    : Math.max(0, Math.round((totalUserCapital - allocated) * 100) / 100)
+  return { allocated: Math.round(allocated * 100) / 100, free }
 }
 
 export const FALLBACK_POOLS: HedgePool[] = [

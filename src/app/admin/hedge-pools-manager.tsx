@@ -878,7 +878,12 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
               <div className="space-y-3">
                 {selectedClientAllocations.map((item, index) => {
                   const clientObj = clients.find(c => c.id === item.userId)
-                  const freeCap = getUnallocatedFreeCapital(item.userId, pools, Number(clientObj?.totalInvested || 0))
+                  const freeCap = getUnallocatedFreeCapital(
+                    item.userId,
+                    pools,
+                    Number(clientObj?.totalInvested || 0),
+                    (clientObj as any)?.freePocketReserve
+                  )
                   const itemShare = mergeTotalCapital > 0 ? (Number(item.amount || 0) / mergeTotalCapital) * 100 : 0
                   return (
                     <div key={index} className="p-4 bg-black/40 border border-white/10 rounded-2xl flex flex-col gap-3">

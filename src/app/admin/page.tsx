@@ -87,16 +87,18 @@ export default async function AdminPage() {
   userBalanceMap.forEach((val) => { totalFundValue += val })
   userCapitalMap.forEach((val) => { totalInvestedCapital += val })
 
-  const enrichedClients = (clients || []).map((c) => ({
-    id: c.id,
-    full_name: c.full_name,
-    email: c.email,
-    totalInvested: userCapitalMap.get(c.id) || 0,
-    currentBalance: userBalanceMap.get(c.id) || (userCapitalMap.get(c.id) || 0)
-  }))
-
   // 4. Fetch Multi-Investor Hedge Pools using Admin client
   const hedgePools = await fetchAllHedgePoolsWithClient(supabaseAdmin)
+
+  // Calculate pool allocations per user
+  const poolAllocationsMap = new Map<string, number>()
+  for (const p of hedgePools) {
+    if (p.members) {
+      for (const m of p.members) {
+        poolAllocationsMap.set(m.user_id, (poolAllocationsMap.get(m.user_id) || 0) + Number(m.allocated_amount || 0))
+      }
+    }
+  }
 
   // 5. Fetch Recent Transactions Log using Admin client (shows all transactions across clients)
   const { data: transactions } = await supabaseAdmin
@@ -112,21 +114,45 @@ export default async function AdminPage() {
     .order('created_at', { ascending: false })
     .limit(30)
 
-  // 7. Calculate Founders Profit Pocket (inflow: fee, outflow: pocket_payout, pocket_reinvest)
-  const pocketAuditTransactions = (transactions || [])
-    .filter((t: any) => ['fee', 'pocket_payout', 'pocket_reinvest'].includes((t.type || '').toLowerCase()))
-    .map((t: any) => ({
-      id: t.id,
-      created_at: t.created_at,
-      type: (t.type || '').toLowerCase(),
-      amount: Math.abs(Number(t.amount || 0)),
-      user_name: t.profile?.full_name || t.profile?.email || 'Fund Client',
-      user_email: t.profile?.email || ''
-    }))
+  // 7. Calculate Founders Profit Pocket (complete transaction ledger, not truncated by limit)
+  const { data: allPocketTxs } = await supabaseAdmin
+    .from('transactions')
+    .select('id, created_at, type, amount, profile:profiles(full_name, email)')
+    .in('type', ['fee', 'pocket_payout', 'pocket_reinvest', 'FEE', 'POCKET_PAYOUT', 'POCKET_REINVEST'])
+    .order('created_at', { ascending: false })
+
+  const pocketAuditTransactions = (allPocketTxs || []).map((t: any) => ({
+    id: t.id,
+    created_at: t.created_at,
+    type: (t.type || '').toLowerCase(),
+    amount: Math.abs(Number(t.amount || 0)),
+    user_name: t.profile?.full_name || t.profile?.email || 'Fund Client',
+    user_email: t.profile?.email || ''
+  }))
 
   const inflow = pocketAuditTransactions.filter(t => t.type === 'fee').reduce((acc, t) => acc + t.amount, 0)
   const outflow = pocketAuditTransactions.filter(t => ['pocket_payout', 'pocket_reinvest'].includes(t.type)).reduce((acc, t) => acc + t.amount, 0)
-  const profitPocketBalance = Math.max(0, inflow - outflow)
+  const profitPocketBalance = Math.round(Math.max(0, inflow - outflow) * 100) / 100
+
+  const enrichedClients = (clients || []).map((c) => {
+    const isPocket = c.email?.includes('pocket') || c.full_name?.includes('Pocket')
+    const baseInvested = userCapitalMap.has(c.id)
+      ? userCapitalMap.get(c.id)!
+      : (isPocket ? (poolAllocationsMap.get(c.id) || 0) : 0)
+    const baseBalance = userBalanceMap.has(c.id)
+      ? userBalanceMap.get(c.id)!
+      : baseInvested
+
+    return {
+      id: c.id,
+      full_name: c.full_name,
+      email: c.email,
+      role: c.role,
+      totalInvested: baseInvested,
+      currentBalance: baseBalance,
+      freePocketReserve: isPocket ? profitPocketBalance : undefined
+    }
+  })
 
   const formattedTransactions = (transactions || []).map((t: any) => ({
     id: t.id,

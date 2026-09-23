@@ -85,35 +85,61 @@ export async function addMembersToHedgePoolAction(state: any, formData: FormData
   const supabaseAdmin = createAdminClient()
 
   // 1. Failsafe Check: Verify each investor has enough free capital!
+  const pocketIncrements: { userId: string; amount: number }[] = []
+
   for (const m of membersData) {
     const allocated = Number(m.allocatedAmount || 0)
     if (allocated <= 0) continue
 
-    // Fetch user total invested capital (latest active snapshot)
-    const { data: userCapRows } = await supabaseAdmin
-      .from('invested_capital')
-      .select('amount_invested')
-      .eq('user_id', m.userId)
-      .order('created_at', { ascending: false })
-      .limit(1)
+    const { data: targetProfile } = await supabaseAdmin.from('profiles').select('full_name, email').eq('id', m.userId).single()
+    const isPocketProfile = targetProfile?.email === 'founders.pocket@hedge.internal' || targetProfile?.full_name?.includes('Pocket')
 
-    const totalUserCap = userCapRows && userCapRows.length > 0 ? Number(userCapRows[0].amount_invested) : 0
+    let freeAvailable = 0
+    if (isPocketProfile) {
+      // For Founders Profit Pocket, available capital is the liquid Pocket Reserve plus current allocation in this pool
+      const { data: txs } = await supabaseAdmin.from('transactions').select('type, amount')
+      const inflow = (txs || []).filter(t => (t.type || '').toLowerCase() === 'fee').reduce((acc, t) => acc + Math.abs(Number(t.amount || 0)), 0)
+      const outflow = (txs || []).filter(t => ['pocket_payout', 'pocket_reinvest'].includes((t.type || '').toLowerCase())).reduce((acc, t) => acc + Math.abs(Number(t.amount || 0)), 0)
+      const pocketReserve = Math.round(Math.max(0, inflow - outflow) * 100) / 100
 
-    // Fetch allocations in other active pools
-    const { data: otherPoolAllocations } = await supabaseAdmin
-      .from('hedge_pool_members')
-      .select('allocated_amount')
-      .eq('user_id', m.userId)
-      .neq('pool_id', poolId)
+      const { data: currentInThisPool } = await supabaseAdmin
+        .from('hedge_pool_members')
+        .select('allocated_amount')
+        .eq('user_id', m.userId)
+        .eq('pool_id', poolId)
+      const prevAlloc = currentInThisPool && currentInThisPool.length > 0 ? Number(currentInThisPool[0].allocated_amount || 0) : 0
 
-    const existingAllocated = otherPoolAllocations?.reduce((acc, curr) => acc + Number(curr.allocated_amount), 0) || 0
-    const freeAvailable = Math.max(0, totalUserCap - existingAllocated)
+      freeAvailable = Math.round((pocketReserve + prevAlloc) * 100) / 100
 
-    if (allocated > freeAvailable) {
-      const { data: targetProfile } = await supabaseAdmin.from('profiles').select('full_name, email').eq('id', m.userId).single()
+      if (allocated > prevAlloc) {
+        pocketIncrements.push({ userId: m.userId, amount: allocated - prevAlloc })
+      }
+    } else {
+      // Normal clients: Fetch user total invested capital (latest active snapshot)
+      const { data: userCapRows } = await supabaseAdmin
+        .from('invested_capital')
+        .select('amount_invested')
+        .eq('user_id', m.userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      const totalUserCap = userCapRows && userCapRows.length > 0 ? Number(userCapRows[0].amount_invested) : 0
+
+      // Fetch allocations in other active pools
+      const { data: otherPoolAllocations } = await supabaseAdmin
+        .from('hedge_pool_members')
+        .select('allocated_amount')
+        .eq('user_id', m.userId)
+        .neq('pool_id', poolId)
+
+      const existingAllocated = otherPoolAllocations?.reduce((acc, curr) => acc + Number(curr.allocated_amount), 0) || 0
+      freeAvailable = Math.max(0, totalUserCap - existingAllocated)
+    }
+
+    if (allocated > freeAvailable + 0.0001) {
       const userName = targetProfile?.full_name || targetProfile?.email || 'Investor'
       return {
-        error: `Failsafe Capital Protection Triggered: ${userName} only has $${freeAvailable.toLocaleString()} free capital available. You cannot allocate $${allocated.toLocaleString()} into this pool. Deposit capital first under Top-Up Capital.`
+        error: `Failsafe Capital Protection Triggered: ${userName} only has $${freeAvailable.toLocaleString()} free capital available. You cannot allocate $${allocated.toLocaleString()} into this pool. ${isPocketProfile ? 'Harvest or add profit cuts into Founders Pocket first.' : 'Deposit capital first under Top-Up Capital.'}`
       }
     }
   }
@@ -121,7 +147,7 @@ export async function addMembersToHedgePoolAction(state: any, formData: FormData
   // 2. Delete existing members for clean merge re-allocation
   await supabaseAdmin.from('hedge_pool_members').delete().eq('pool_id', poolId)
 
-  // 2. Prepare member rows with percentage splits & initial values
+  // 3. Prepare member rows with percentage splits & initial values
   const memberRows = membersData.map(m => {
     const allocated = Number(m.allocatedAmount)
     const splitPercentage = (allocated / totalAllocated) * 100
@@ -141,7 +167,7 @@ export async function addMembersToHedgePoolAction(state: any, formData: FormData
     return { error: 'Failed to insert pool members: ' + insertError.message }
   }
 
-  // 3. Update pool total capital and current value
+  // 4. Update pool total capital and current value
   await supabaseAdmin
     .from('hedge_pools')
     .update({
@@ -149,6 +175,42 @@ export async function addMembersToHedgePoolAction(state: any, formData: FormData
       current_value: totalAllocated
     })
     .eq('id', poolId)
+
+  // 5. If pocket incremented, record reinvest transaction and sync invested_capital / ledger
+  for (const inc of pocketIncrements) {
+    await supabaseAdmin.from('transactions').insert({
+      id: crypto.randomUUID(),
+      user_id: inc.userId,
+      type: 'pocket_reinvest',
+      amount: inc.amount
+    })
+
+    const { data: currentCapRows } = await supabaseAdmin
+      .from('invested_capital')
+      .select('amount_invested')
+      .eq('user_id', inc.userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    const currentCap = currentCapRows && currentCapRows.length > 0 ? Number(currentCapRows[0].amount_invested) : 0
+    await supabaseAdmin.from('invested_capital').insert({
+      id: crypto.randomUUID(),
+      user_id: inc.userId,
+      amount_invested: parseFloat((currentCap + inc.amount).toFixed(2))
+    })
+
+    const { data: currentLedgerRows } = await supabaseAdmin
+      .from('ledger')
+      .select('current_value')
+      .eq('user_id', inc.userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    const currentVal = currentLedgerRows && currentLedgerRows.length > 0 ? Number(currentLedgerRows[0].current_value) : 0
+    await supabaseAdmin.from('ledger').insert({
+      id: crypto.randomUUID(),
+      user_id: inc.userId,
+      current_value: parseFloat((currentVal + inc.amount).toFixed(2))
+    })
+  }
 
   revalidatePath('/admin')
   revalidatePath('/client')
@@ -511,9 +573,39 @@ export async function takeHedgePoolProfitCutAction(
     // Record transaction
     await supabaseAdmin.from('transactions').insert({
       id: crypto.randomUUID(),
-      user_id: user.id,
+      user_id: pocketProfile.id,
       type: 'pocket_reinvest',
       amount: cutAmount
+    })
+
+    // Update invested_capital for Founders Profit Pocket
+    const { data: currentCapRows } = await supabaseAdmin
+      .from('invested_capital')
+      .select('amount_invested')
+      .eq('user_id', pocketProfile.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    const currentCap = currentCapRows && currentCapRows.length > 0 ? Number(currentCapRows[0].amount_invested) : 0
+    await supabaseAdmin.from('invested_capital').insert({
+      id: crypto.randomUUID(),
+      user_id: pocketProfile.id,
+      amount_invested: parseFloat((currentCap + cutAmount).toFixed(2))
+    })
+
+    // Update ledger for Founders Profit Pocket
+    const { data: currentLedgerRows } = await supabaseAdmin
+      .from('ledger')
+      .select('current_value')
+      .eq('user_id', pocketProfile.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    const currentVal = currentLedgerRows && currentLedgerRows.length > 0 ? Number(currentLedgerRows[0].current_value) : 0
+    await supabaseAdmin.from('ledger').insert({
+      id: crypto.randomUUID(),
+      user_id: pocketProfile.id,
+      current_value: parseFloat((currentVal + cutAmount).toFixed(2))
     })
 
     // Log trade audit
