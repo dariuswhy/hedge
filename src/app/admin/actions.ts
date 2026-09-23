@@ -253,3 +253,15 @@ export async function sendStatements(state: any, scope: string = 'all', targetId
     return { error: error.message || 'Failed to dispatch statements.' }
   }
 }
+
+export async function deleteResetRequestAction(requestId: string) {
+  if (!requestId) return { error: 'Request ID is required' }
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+  const supabaseAdmin = createAdminClient()
+  const { error } = await supabaseAdmin.from('reset_requests').delete().eq('id', requestId)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: 'Request deleted successfully' }
+}

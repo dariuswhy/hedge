@@ -26,13 +26,14 @@ import {
   XCircle,
   Coins,
   Wallet,
-  Crown
+  Crown,
+  Trash2
 } from 'lucide-react'
 import AdminForms from './admin-forms'
 import ClientSearch from './client-search'
 import HedgePoolsManager from './hedge-pools-manager'
 import { HedgePool } from '@/lib/hedge-pools'
-import { sendStatements } from './actions'
+import { sendStatements, deleteResetRequestAction } from './actions'
 import { approveResetRequestAction, respondToApplicationAction } from '../login/actions'
 import { payoutFromPocketAction, reinvestPocketIntoPoolAction } from './pocket-actions'
 
@@ -963,6 +964,7 @@ export default function AdminTabs({
                   {resetRequests.map((req: any) => {
                     const isPending = req.status === 'pending'
                     const rawText = req.email || ''
+                    const isWhitelistApplication = rawText.startsWith('[APPLY')
                     // Extract email if formatted as [APPLY] Name (email@domain.com) - Capital: $25k...
                     const emailMatch = rawText.match(/\(([^)]+)\)/)
                     const cleanEmail = emailMatch ? emailMatch[1] : (rawText.split(' ')[0] || rawText)
@@ -975,64 +977,115 @@ export default function AdminTabs({
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-4">
                           <div className="space-y-1">
                             <div className="flex items-center gap-3">
+                              {/* Request Type Badge */}
+                              <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                isWhitelistApplication 
+                                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' 
+                                  : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                              }`}>
+                                {isWhitelistApplication ? 'Whitelist Application' : 'Password Reset Request'}
+                              </span>
+
+                              {/* Status Badge */}
                               <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                                 isPending ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : req.status === 'rejected' ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                               }`}>
                                 {req.status}
                               </span>
+
                               <span className="text-xs font-mono text-gray-400 flex items-center gap-1">
                                 <Clock className="w-3.5 h-3.5" />
                                 {new Date(req.created_at).toLocaleString()}
                               </span>
                             </div>
+
                             <h4 className="text-base font-bold text-white mt-2 font-mono">
                               {rawText}
                             </h4>
                           </div>
+
+                          {/* Delete Request Button */}
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Are you sure you want to dismiss this request?`)) return
+                              setIsSending(true)
+                              const res = await deleteResetRequestAction(req.id)
+                              setIsSending(false)
+                              if (res.error) setStatementStatus(`Error: ${res.error}`)
+                              else setStatementStatus('Request dismissed successfully.')
+                            }}
+                            disabled={isSending}
+                            title="Dismiss Request"
+                            className="p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-xs self-start md:self-center transition-all flex items-center gap-1.5"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span className="text-[11px] font-medium hidden sm:inline">Dismiss</span>
+                          </button>
                         </div>
 
                         {/* Action Buttons Toolbar */}
                         <div className="flex flex-wrap items-center gap-3 pt-2">
-                          <button
-                            onClick={() => {
-                              setSelectedRequestForMeeting({ id: req.id, email: cleanEmail, rawText: req.email })
-                            }}
-                            className="px-4 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 text-xs font-semibold flex items-center gap-2 transition-all"
-                          >
-                            <Calendar className="w-4 h-4 text-blue-400" />
-                            Schedule Meeting / Google Meet
-                          </button>
+                          {isWhitelistApplication ? (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setSelectedRequestForMeeting({ id: req.id, email: cleanEmail, rawText: req.email })
+                                }}
+                                className="px-4 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 text-xs font-semibold flex items-center gap-2 transition-all"
+                              >
+                                <Calendar className="w-4 h-4 text-blue-400" />
+                                Schedule Meeting / Google Meet
+                              </button>
 
-                          <button
-                            onClick={async () => {
-                              setIsSending(true)
-                              const res = await respondToApplicationAction(req.id, cleanEmail, 'approve')
-                              setIsSending(false)
-                              if (res.error) setStatementStatus(`Error: ${res.error}`)
-                              else setStatementStatus(res.success || 'Approved!')
-                            }}
-                            disabled={isSending}
-                            className="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-2 transition-all"
-                          >
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                            Approve & Send Access Link
-                          </button>
+                              <button
+                                onClick={async () => {
+                                  setIsSending(true)
+                                  const res = await respondToApplicationAction(req.id, cleanEmail, 'approve')
+                                  setIsSending(false)
+                                  if (res.error) setStatementStatus(`Error: ${res.error}`)
+                                  else setStatementStatus(res.success || 'Approved!')
+                                }}
+                                disabled={isSending}
+                                className="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-2 transition-all"
+                              >
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                Approve & Send Access Link
+                              </button>
 
-                          <button
-                            onClick={async () => {
-                              if (!confirm(`Are you sure you want to decline application for ${cleanEmail}?`)) return
-                              setIsSending(true)
-                              const res = await respondToApplicationAction(req.id, cleanEmail, 'decline')
-                              setIsSending(false)
-                              if (res.error) setStatementStatus(`Error: ${res.error}`)
-                              else setStatementStatus(res.success || 'Declined.')
-                            }}
-                            disabled={isSending}
-                            className="px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold flex items-center gap-2 transition-all"
-                          >
-                            <XCircle className="w-4 h-4 text-red-400" />
-                            Decline Application
-                          </button>
+                              <button
+                                onClick={async () => {
+                                  if (!confirm(`Are you sure you want to decline application for ${cleanEmail}?`)) return
+                                  setIsSending(true)
+                                  const res = await respondToApplicationAction(req.id, cleanEmail, 'decline')
+                                  setIsSending(false)
+                                  if (res.error) setStatementStatus(`Error: ${res.error}`)
+                                  else setStatementStatus(res.success || 'Declined.')
+                                }}
+                                disabled={isSending}
+                                className="px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold flex items-center gap-2 transition-all"
+                              >
+                                <XCircle className="w-4 h-4 text-red-400" />
+                                Decline Application
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={async () => {
+                                  setIsSending(true)
+                                  const res = await approveResetRequestAction(req.id, cleanEmail)
+                                  setIsSending(false)
+                                  if (res.error) setStatementStatus(`Error: ${res.error}`)
+                                  else setStatementStatus(res.success || 'Password reset approved & email sent!')
+                                }}
+                                disabled={isSending}
+                                className="px-4 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 text-xs font-semibold flex items-center gap-2 transition-all"
+                              >
+                                <Key className="w-4 h-4 text-blue-400" />
+                                Send Password Reset Link
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     )
