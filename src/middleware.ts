@@ -43,6 +43,11 @@ export async function middleware(request: NextRequest) {
                   email.includes('dionica') ||
                   email.includes('admin')
 
+  // Block public signup route - whitelist only!
+  if (pathname.startsWith('/signup')) {
+    return NextResponse.redirect(new URL('/?apply=true', request.url))
+  }
+
   // Protect admin routes: only authenticated admin users can access /admin
   if (pathname.startsWith('/admin')) {
     if (!user) return NextResponse.redirect(new URL('/login', request.url))

@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { Resend } from 'resend'
 import { renderPasswordResetEmailHtml } from '@/lib/email-templates'
+import crypto from 'crypto'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -16,7 +17,11 @@ function getSiteUrl() {
 }
 
 function getFromEmail() {
-  return process.env.RESEND_FROM_EMAIL || 'Hedge Capital <onboarding@resend.dev>'
+  return process.env.RESEND_FROM_EMAIL || 'Captain Hedge <onboarding@resend.dev>'
+}
+
+function getHmacSecret() {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'captain-hedge-whitelist-secret-2026'
 }
 
 export async function login(state: any, formData: FormData) {
@@ -187,47 +192,145 @@ export async function approveResetRequestAction(requestId: string, email: string
   }
 }
 
-export async function submitOnboardingApplicationAction(state: any, formData: FormData) {
-  const name = formData.get('name') as string
-  const email = (formData.get('email') as string || '').trim().toLowerCase()
-  const phone = formData.get('phone') as string
-  const capital = formData.get('capital') as string
-  const notes = formData.get('notes') as string
+export async function sendWhitelistVerificationCodeAction(email: string, name: string) {
+  const cleanEmail = (email || '').trim().toLowerCase()
+  if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+    return { error: 'Please provide a valid email address.' }
+  }
 
-  if (!email || !name) {
+  // Generate 6-digit random code
+  const code = Math.floor(100000 + Math.random() * 900000).toString()
+  const expires = Date.now() + 15 * 60 * 1000 // 15 minutes
+  const secret = getHmacSecret()
+  const signature = crypto
+    .createHmac('sha256', secret)
+    .update(`${cleanEmail}:${code}:${expires}`)
+    .digest('hex')
+
+  const token = `${signature}:${expires}`
+
+  // Dispatch email via Resend
+  let emailSent = false
+  let emailError = ''
+  try {
+    if (process.env.RESEND_API_KEY) {
+      const resendRes = await resend.emails.send({
+        from: getFromEmail(),
+        to: cleanEmail,
+        subject: `🔐 Captain Hedge • Whitelist Verification Code: ${code}`,
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px; background: #030712; color: #ffffff; border-radius: 20px; border: 1px solid #1e293b;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h2 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.05em; color: #38bdf8;">CAPTAIN HEDGE</h2>
+              <p style="margin: 4px 0 0 0; font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.15em;">Private Allocation • Whitelist Verification</p>
+            </div>
+            <p style="color: #e2e8f0; font-size: 15px; margin-bottom: 8px;">Hello ${name ? name : 'Investor'},</p>
+            <p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 24px;">
+              To confirm ownership of this email address and complete your application for Whitelist Onboarding, please enter the following 6-digit verification code:
+            </p>
+            <div style="text-align: center; margin: 28px 0; background: #0f172a; padding: 22px; border-radius: 14px; border: 1px solid #334155;">
+              <span style="font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; font-family: monospace;">${code}</span>
+            </div>
+            <p style="color: #64748b; font-size: 12px; line-height: 1.5; text-align: center; margin-top: 24px;">
+              This code expires in 15 minutes. If you did not initiate this request, you can safely ignore this email.
+            </p>
+          </div>
+        `
+      })
+      if (resendRes.data?.id) {
+        emailSent = true
+      } else if (resendRes.error) {
+        emailError = resendRes.error.message
+      }
+    } else {
+      return { error: 'RESEND_API_KEY is not configured on the server. Please configure Resend.' }
+    }
+  } catch (err: any) {
+    console.error('Failed to send verification code:', err)
+    emailError = err.message || 'Email dispatch failed'
+  }
+
+  if (!emailSent) {
+    return { error: `Could not send verification email: ${emailError || 'Service temporarily unavailable'}` }
+  }
+
+  return {
+    success: `Verification code sent to ${cleanEmail}. Please check your inbox (and spam folder).`,
+    token
+  }
+}
+
+export async function verifyAndSubmitOnboardingApplicationAction(formData: FormData) {
+  const name = (formData.get('name') as string || '').trim()
+  const email = (formData.get('email') as string || '').trim().toLowerCase()
+  const phone = (formData.get('phone') as string || '').trim()
+  const capital = (formData.get('capital') as string || '').trim()
+  const notes = (formData.get('notes') as string || '').trim()
+  const code = (formData.get('code') as string || '').trim()
+  const token = (formData.get('token') as string || '').trim()
+
+  if (!name || !email) {
     return { error: 'Full Name and Email Address are required.' }
   }
 
+  if (!code || code.length !== 6) {
+    return { error: 'Please enter the 6-digit verification code sent to your email.' }
+  }
+
+  if (!token || !token.includes(':')) {
+    return { error: 'Verification session expired. Please request a new verification code.' }
+  }
+
+  const [signature, expiresStr] = token.split(':')
+  const expires = parseInt(expiresStr, 10)
+
+  if (Date.now() > expires) {
+    return { error: 'Verification code has expired. Please request a new code.' }
+  }
+
+  const secret = getHmacSecret()
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(`${email}:${code}:${expires}`)
+    .digest('hex')
+
+  if (signature !== expectedSignature) {
+    return { error: 'Incorrect verification code. Please check your email and try again.' }
+  }
+
+  // Token is verified!
   const supabaseAdmin = createAdminClient()
 
-  // Insert application row in reset_requests table with explicit UUID
   const { error: dbErr } = await supabaseAdmin.from('reset_requests').insert({
     id: crypto.randomUUID(),
-    email: `[APPLY] ${name} (${email}) - Capital: $${capital || 'Unspecified'} | Phone: ${phone || 'N/A'} | Notes: ${notes || 'None'}`,
+    email: `[APPLY - VERIFIED EMAIL ✓] ${name} (${email}) - Capital: $${capital || 'Unspecified'} | Phone: ${phone || 'N/A'} | Notes: ${notes || 'None'}`,
     status: 'pending'
   })
 
   if (dbErr) {
     console.error('Database insert onboarding application error:', dbErr)
-    return { error: `Database Error: ${dbErr.message}. Please ensure reset_requests table is created in Supabase.` }
+    return { error: `Database Error: ${dbErr.message}` }
   }
 
-  // Notify admin via Resend if API key is present
+  // Notify admin via Resend
   try {
     if (process.env.RESEND_API_KEY) {
       await resend.emails.send({
         from: getFromEmail(),
-        to: process.env.ADMIN_EMAIL || 'admin@hedge.com',
-        subject: `🔥 New Whitelist Access Application: ${name} ($${capital})`,
+        to: process.env.ADMIN_EMAIL || 'darius.neagu27@gmail.com',
+        subject: `🔥 Verified Whitelist Investor Application: ${name} ($${capital})`,
         html: `
           <div style="font-family: sans-serif; max-width: 550px; margin: 0 auto; padding: 25px; background: #030712; color: #fff; border-radius: 16px; border: 1px solid #1e293b;">
-            <h2 style="color: #3b82f6;">New Whitelist Investor Application</h2>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+              <span style="background: #065f46; color: #6ee7b7; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: bold; text-transform: uppercase;">Verified Email ✓</span>
+            </div>
+            <h2 style="color: #38bdf8; margin-top: 0;">New Whitelist Investor Application</h2>
             <p><strong>Name:</strong> ${name}</p>
-            <p><strong>Email:</strong> ${email}</p>
+            <p><strong>Verified Email:</strong> ${email}</p>
             <p><strong>Phone:</strong> ${phone || 'Not provided'}</p>
             <p><strong>Intended Capital:</strong> $${capital || 'Not specified'}</p>
             <p><strong>Notes:</strong> ${notes || 'None'}</p>
-            <p style="color: #10b981;">Log into Admin Operations to review and approve this client account.</p>
+            <p style="color: #10b981; margin-top: 20px;">Log into Admin Operations to review and approve this client account.</p>
           </div>
         `
       })
@@ -237,8 +340,12 @@ export async function submitOnboardingApplicationAction(state: any, formData: Fo
   }
 
   return {
-    success: `Application submitted successfully! Our Senior Managing Partner will review your whitelist request and contact you at ${email}.`
+    success: `Application verified and submitted successfully! Our Senior Managing Partner will review your request and contact you at ${email}.`
   }
+}
+
+export async function submitOnboardingApplicationAction(state: any, formData: FormData) {
+  return await verifyAndSubmitOnboardingApplicationAction(formData)
 }
 
 export async function respondToApplicationAction(

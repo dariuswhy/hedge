@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import {
@@ -17,21 +17,85 @@ import {
   Sparkles,
   Phone,
   Mail,
-  DollarSign
+  DollarSign,
+  KeyRound,
+  RotateCcw
 } from 'lucide-react'
-import { submitOnboardingApplicationAction } from './login/actions'
-
-const initialApplyState: { error?: string; success?: string } = {}
+import {
+  sendWhitelistVerificationCodeAction,
+  verifyAndSubmitOnboardingApplicationAction
+} from './login/actions'
 
 export default function Home() {
   const [showApplyModal, setShowApplyModal] = useState(false)
+  const [applyStep, setApplyStep] = useState<'details' | 'verify' | 'done'>('details')
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    capital: '25,000',
+    notes: ''
+  })
+  const [verificationCode, setVerificationCode] = useState('')
+  const [verificationToken, setVerificationToken] = useState('')
+  const [statusMsg, setStatusMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null)
+  const [isSendingCode, setIsSendingCode] = useState(false)
+  const [isVerifying, setIsVerifying] = useState(false)
 
-  const [applyState, applyAction, isApplyPending] = useActionState(
-    async (prevState: { error?: string; success?: string }, formData: FormData) => {
-      return await submitOnboardingApplicationAction(prevState, formData)
-    },
-    initialApplyState
-  )
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('apply') === 'true') {
+        setShowApplyModal(true)
+      }
+    }
+  }, [])
+
+  const handleRequestCode = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    setStatusMsg(null)
+    if (!formData.name.trim() || !formData.email.trim()) {
+      setStatusMsg({ type: 'error', text: 'Full Name and a valid Email Address are required.' })
+      return
+    }
+    setIsSendingCode(true)
+    const res = await sendWhitelistVerificationCodeAction(formData.email, formData.name)
+    setIsSendingCode(false)
+    if (res.error) {
+      setStatusMsg({ type: 'error', text: res.error })
+    } else {
+      setVerificationToken(res.token || '')
+      setApplyStep('verify')
+      setStatusMsg({ type: 'success', text: `Verification code sent to ${formData.email}. Please check your inbox!` })
+    }
+  }
+
+  const handleVerifyAndSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setStatusMsg(null)
+    if (!verificationCode || verificationCode.trim().length !== 6) {
+      setStatusMsg({ type: 'error', text: 'Please enter the 6-digit verification code.' })
+      return
+    }
+    setIsVerifying(true)
+    const payload = new FormData()
+    payload.append('name', formData.name.trim())
+    payload.append('email', formData.email.trim())
+    payload.append('phone', formData.phone.trim())
+    payload.append('capital', formData.capital)
+    payload.append('notes', formData.notes.trim())
+    payload.append('code', verificationCode.trim())
+    payload.append('token', verificationToken)
+
+    const res = await verifyAndSubmitOnboardingApplicationAction(payload)
+    setIsVerifying(false)
+    if (res.error) {
+      setStatusMsg({ type: 'error', text: res.error })
+    } else {
+      setApplyStep('done')
+      setStatusMsg({ type: 'success', text: res.success || 'Application submitted successfully!' })
+    }
+  }
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-[#030712] text-white">
@@ -186,7 +250,7 @@ export default function Home() {
         </footer>
       </main>
 
-      {/* Modal: Whitelist Application & Consultation Request */}
+      {/* Modal: Whitelist Application & Consultation Request with 2-Step Email Verification */}
       {showApplyModal && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="glass-card rounded-3xl p-8 max-w-lg w-full space-y-6 border border-white/10 shadow-2xl relative max-h-[90vh] overflow-y-auto">
@@ -194,118 +258,249 @@ export default function Home() {
               <div>
                 <h3 className="text-xl font-bold text-white flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-emerald-400" />
-                  Apply for Fund Whitelist Access
+                  {applyStep === 'verify' ? 'Confirm Email Verification' : applyStep === 'done' ? 'Application Confirmed' : 'Apply for Fund Whitelist Access'}
                 </h3>
                 <p className="text-xs text-gray-400 mt-1">
-                  Schedule a private consultation and apply for onboarding approval.
+                  {applyStep === 'verify' 
+                    ? `Enter the 6-digit code sent to ${formData.email}` 
+                    : applyStep === 'done' 
+                    ? 'Your email has been verified and registered with Managing Partners.' 
+                    : 'Institutional review & qualification for private allocation.'}
                 </p>
               </div>
               <button
-                onClick={() => setShowApplyModal(false)}
+                onClick={() => {
+                  setShowApplyModal(false)
+                  if (applyStep === 'done') {
+                    setApplyStep('details')
+                    setFormData({ name: '', email: '', phone: '', capital: '25,000', notes: '' })
+                    setVerificationCode('')
+                    setStatusMsg(null)
+                  }
+                }}
                 className="w-8 h-8 rounded-full bg-white/10 text-gray-400 hover:text-white flex items-center justify-center text-sm font-bold"
               >
                 ✕
               </button>
             </div>
 
-            <form action={applyAction} className="space-y-4 text-left">
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Full Name / Entity
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  required
-                  placeholder="e.g. Darius Investor"
-                  className="w-full px-4 py-3 rounded-xl glass-input text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  name="email"
-                  required
-                  placeholder="investor@example.com"
-                  className="w-full px-4 py-3 rounded-xl glass-input text-sm"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Step 1: Details */}
+            {applyStep === 'details' && (
+              <form onSubmit={handleRequestCode} className="space-y-4 text-left">
                 <div>
                   <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                    Phone Number
+                    Full Name / Entity
                   </label>
                   <input
-                    type="tel"
-                    name="phone"
-                    placeholder="+40 700 000 000"
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="e.g. Darius Investor"
                     className="w-full px-4 py-3 rounded-xl glass-input text-sm"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                    Intended Capital ($)
+                    Email Address (A verification code will be sent here)
                   </label>
-                  <select
-                    name="capital"
-                    className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500"
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="investor@example.com"
+                    className="w-full px-4 py-3 rounded-xl glass-input text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      placeholder="+40 700 000 000"
+                      className="w-full px-4 py-3 rounded-xl glass-input text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                      Intended Capital ($)
+                    </label>
+                    <select
+                      value={formData.capital}
+                      onChange={(e) => setFormData({ ...formData, capital: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="25,000">$25,000 - $50,000</option>
+                      <option value="50,000">$50,000 - $100,000</option>
+                      <option value="100,000">$100,000 - $250,000</option>
+                      <option value="250,000">$250,000+</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Notes / Investment Goals
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder="Tell us about your portfolio targets or preferred investment strategy..."
+                    className="w-full px-4 py-3 rounded-xl glass-input text-sm"
+                  />
+                </div>
+
+                {statusMsg?.type === 'error' && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs">
+                    {statusMsg.text}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setShowApplyModal(false)}
+                    className="px-5 py-2.5 rounded-xl bg-white/10 text-white text-xs font-medium hover:bg-white/20"
                   >
-                    <option value="25,000">$25,000 - $50,000</option>
-                    <option value="50,000">$50,000 - $100,000</option>
-                    <option value="100,000">$100,000 - $250,000</option>
-                    <option value="250,000">$250,000+</option>
-                  </select>
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSendingCode}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-medium hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 shadow-lg flex items-center gap-2"
+                  >
+                    {isSendingCode ? 'Sending Verification Code...' : 'Verify Email & Continue →'}
+                  </button>
                 </div>
-              </div>
+              </form>
+            )}
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Notes / Investment Goals
-                </label>
-                <textarea
-                  name="notes"
-                  rows={3}
-                  placeholder="Tell us about your portfolio targets or preferred investment strategy..."
-                  className="w-full px-4 py-3 rounded-xl glass-input text-sm"
-                />
-              </div>
-
-              {applyState?.error && (
-                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs">
-                  {applyState.error}
+            {/* Step 2: Verification Code */}
+            {applyStep === 'verify' && (
+              <form onSubmit={handleVerifyAndSubmit} className="space-y-6 text-left">
+                <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs flex items-start gap-3">
+                  <KeyRound className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold block text-white mb-0.5">Verification Code Sent</span>
+                    Please enter the 6-digit confirmation code dispatched to <strong className="text-white">{formData.email}</strong> to verify your identity.
+                  </div>
                 </div>
-              )}
 
-              {applyState?.success && (
-                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                  {applyState.success}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 text-center">
+                    Enter 6-Digit Code
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    autoFocus
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="123456"
+                    className="w-full text-center text-3xl font-mono tracking-[12px] font-bold py-4 rounded-xl glass-input text-emerald-400 placeholder-gray-600 focus:border-emerald-500 focus:outline-none"
+                  />
                 </div>
-              )}
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
+                {statusMsg?.type === 'error' && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs text-center">
+                    {statusMsg.text}
+                  </div>
+                )}
+                {statusMsg?.type === 'success' && (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs text-center">
+                    {statusMsg.text}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between text-xs text-gray-400 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setApplyStep('details')
+                      setStatusMsg(null)
+                    }}
+                    className="hover:text-white transition-colors"
+                  >
+                    ← Edit Details / Email
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isSendingCode}
+                    onClick={() => handleRequestCode()}
+                    className="text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{isSendingCode ? 'Sending...' : 'Resend code'}</span>
+                  </button>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setShowApplyModal(false)}
+                    className="px-5 py-2.5 rounded-xl bg-white/10 text-white text-xs font-medium hover:bg-white/20"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isVerifying || verificationCode.length !== 6}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-medium hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 shadow-lg flex items-center gap-2"
+                  >
+                    {isVerifying ? 'Verifying...' : 'Verify & Submit Application'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Step 3: Done */}
+            {applyStep === 'done' && (
+              <div className="py-6 text-center space-y-6">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 shadow-xl">
+                  <CheckCircle2 className="w-10 h-10" />
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="text-2xl font-bold text-white">Application Confirmed</h4>
+                  <p className="text-xs uppercase tracking-widest text-emerald-400 font-semibold">Email Verified: {formData.email}</p>
+                  <p className="text-sm text-gray-300 max-w-sm mx-auto leading-relaxed pt-2">
+                    Thank you, <strong className="text-white">{formData.name}</strong>. Your whitelist application has been submitted to Senior Managing Partners with priority status.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-black/40 border border-white/10 text-xs text-gray-400 max-w-sm mx-auto text-left space-y-1 font-mono">
+                  <div>Status: <span className="text-emerald-400 font-semibold">PENDING_REVIEW</span></div>
+                  <div>Applicant: {formData.name}</div>
+                  <div>Verified Email: {formData.email}</div>
+                  <div>Intended Capital: ${formData.capital}</div>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setShowApplyModal(false)}
-                  className="px-5 py-2.5 rounded-xl bg-white/10 text-white text-xs font-medium hover:bg-white/20"
+                  onClick={() => {
+                    setShowApplyModal(false)
+                    setApplyStep('details')
+                    setFormData({ name: '', email: '', phone: '', capital: '25,000', notes: '' })
+                    setVerificationCode('')
+                    setStatusMsg(null)
+                  }}
+                  className="px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold hover:from-emerald-500 hover:to-teal-500 shadow-lg"
                 >
-                  Close
-                </button>
-                <button
-                  type="submit"
-                  disabled={isApplyPending}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-medium hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 shadow-lg"
-                >
-                  {isApplyPending ? 'Submitting Application...' : 'Submit Whitelist Application'}
+                  Return to Platform
                 </button>
               </div>
-            </form>
+            )}
           </div>
         </div>
       )}

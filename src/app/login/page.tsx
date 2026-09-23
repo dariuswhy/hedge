@@ -120,8 +120,8 @@ export default function LoginPage() {
         </p>
         <div className="mt-4 text-center">
            <span className="text-gray-400 text-sm">Don't have an account? </span>
-           <Link href="/signup" className="text-blue-400 hover:text-blue-300 transition-colors text-sm font-medium">
-             Apply for access
+           <Link href="/?apply=true" className="text-blue-400 hover:text-blue-300 transition-colors text-sm font-medium">
+             Apply for Whitelist Access
            </Link>
         </div>
       </motion.div>
