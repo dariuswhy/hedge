@@ -10,10 +10,20 @@ import crypto from 'crypto'
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 function getSiteUrl() {
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  if (process.env.NEXT_PUBLIC_VERCEL_URL) return `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+  if (process.env.NEXT_PUBLIC_SITE_URL && !process.env.NEXT_PUBLIC_SITE_URL.includes('localhost')) {
+    return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')
+  }
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    return 'https://www.captainhedge.com'
+  }
   return 'http://localhost:3000'
+}
+
+function sanitizeActionLink(link: string, siteUrl: string) {
+  if (!link) return `${siteUrl}/update-password`
+  return link
+    .replace(/https%3A%2F%2F[^&]*vercel\.app/gi, encodeURIComponent(`${siteUrl}/auth/callback`))
+    .replace(/https:\/\/[^/]*vercel\.app/gi, siteUrl)
 }
 
 function getFromEmail() {
@@ -92,7 +102,7 @@ export async function requestPasswordResetApprovalAction(state: any, formData: F
       }
     })
     if (data?.properties?.action_link) {
-      resetLink = data.properties.action_link
+      resetLink = sanitizeActionLink(data.properties.action_link, siteUrl)
     }
   } catch (e) {
     console.warn('Generate link fallback:', e)
@@ -154,7 +164,7 @@ export async function approveResetRequestAction(requestId: string, email: string
       }
     })
     if (data?.properties?.action_link) {
-      resetLink = data.properties.action_link
+      resetLink = sanitizeActionLink(data.properties.action_link, siteUrl)
     }
   } catch (err: any) {
     console.warn('Admin recovery link fallback:', err?.message)
@@ -421,14 +431,35 @@ export async function respondToApplicationAction(
     `
   } else {
     // Approve action
-    const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email: applicantEmail,
-      options: {
-        redirectTo: `${siteUrl}/auth/callback?type=recovery&next=/update-password`
+    let accessLink = `${siteUrl}/update-password`
+    try {
+      // 1. Try invite link first so new applicant gets provisioned in Supabase auth
+      const { data: inviteData } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'invite',
+        email: applicantEmail,
+        options: {
+          redirectTo: `${siteUrl}/auth/callback?type=invite&next=/update-password`
+        }
+      })
+
+      if (inviteData?.properties?.action_link) {
+        accessLink = sanitizeActionLink(inviteData.properties.action_link, siteUrl)
+      } else {
+        // 2. Fallback to recovery link if user already exists
+        const { data: recoveryData } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'recovery',
+          email: applicantEmail,
+          options: {
+            redirectTo: `${siteUrl}/auth/callback?type=recovery&next=/update-password`
+          }
+        })
+        if (recoveryData?.properties?.action_link) {
+          accessLink = sanitizeActionLink(recoveryData.properties.action_link, siteUrl)
+        }
       }
-    })
-    const accessLink = linkData?.properties?.action_link || `${siteUrl}/update-password`
+    } catch (e: any) {
+      console.warn('Approve generate link error:', e?.message)
+    }
 
     emailSubject = 'Approved: Welcome to Hedge Capital Private Allocation'
     emailHtml = `
