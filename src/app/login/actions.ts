@@ -22,7 +22,7 @@ function getSiteUrl() {
 function sanitizeActionLink(link: string, siteUrl: string) {
   if (!link) return `${siteUrl}/update-password`
   return link
-    .replace(/https%3A%2F%2F[^&]*vercel\.app/gi, encodeURIComponent(`${siteUrl}/auth/callback`))
+    .replace(/https%3A%2F%2F[^&]*vercel\.app/gi, encodeURIComponent(`${siteUrl}/update-password`))
     .replace(/https:\/\/[^/]*vercel\.app/gi, siteUrl)
 }
 
@@ -98,7 +98,7 @@ export async function requestPasswordResetApprovalAction(state: any, formData: F
       type: 'recovery',
       email,
       options: {
-        redirectTo: `${siteUrl}/auth/callback?type=recovery&next=/update-password`
+        redirectTo: `${siteUrl}/update-password`
       }
     })
     if (data?.properties?.action_link) {
@@ -160,7 +160,7 @@ export async function approveResetRequestAction(requestId: string, email: string
       type: 'recovery',
       email,
       options: {
-        redirectTo: `${siteUrl}/auth/callback?type=recovery&next=/update-password`
+        redirectTo: `${siteUrl}/update-password`
       }
     })
     if (data?.properties?.action_link) {
@@ -438,7 +438,7 @@ export async function respondToApplicationAction(
         type: 'invite',
         email: applicantEmail,
         options: {
-          redirectTo: `${siteUrl}/auth/callback?type=invite&next=/update-password`
+          redirectTo: `${siteUrl}/update-password`
         }
       })
 
@@ -450,7 +450,7 @@ export async function respondToApplicationAction(
           type: 'recovery',
           email: applicantEmail,
           options: {
-            redirectTo: `${siteUrl}/auth/callback?type=recovery&next=/update-password`
+            redirectTo: `${siteUrl}/update-password`
           }
         })
         if (recoveryData?.properties?.action_link) {

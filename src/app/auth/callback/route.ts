@@ -71,7 +71,26 @@ export async function GET(request: NextRequest) {
 
   // If implicit flow or recovery link without code parameter:
   if (isPasswordFlow) {
-    return NextResponse.redirect(`${origin}/update-password`)
+    return new Response(
+      `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Authenticating...</title>
+  <script>
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    window.location.replace('${origin}/update-password' + search + hash);
+  </script>
+</head>
+<body style="background:#030712;color:#ffffff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
+  <p>Authenticating your session...</p>
+</body>
+</html>`,
+      {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      }
+    )
   }
 
   return NextResponse.redirect(`${origin}/login?error=Invalid_or_expired_link`)

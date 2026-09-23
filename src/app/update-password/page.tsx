@@ -36,6 +36,11 @@ export default function UpdatePasswordPage() {
           }
         })
       }
+
+      // If hash contains access_token, immediately acknowledge session
+      if (window.location.hash && window.location.hash.includes('access_token')) {
+        setHasSession(true)
+      }
     }
 
     // 2. Listen for auth state changes (e.g. PASSWORD_RECOVERY or SIGNED_IN from URL hash)
