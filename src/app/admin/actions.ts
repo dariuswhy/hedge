@@ -404,3 +404,23 @@ export async function recordUserHeartbeat(userId?: string) {
     return { success: false }
   }
 }
+
+export async function getLivePresencesAction() {
+  try {
+    const supabaseAdmin = createAdminClient()
+    const { data: authUsersData, error } = await supabaseAdmin.auth.admin.listUsers()
+    if (error || !authUsersData?.users) {
+      return { success: false, users: [] }
+    }
+    return {
+      success: true,
+      users: authUsersData.users.map((u) => ({
+        id: u.id,
+        lastSignInAt: u.last_sign_in_at || null,
+        lastSeenAt: (u.user_metadata?.last_seen_at as string) || u.last_sign_in_at || null
+      }))
+    }
+  } catch (err: any) {
+    return { success: false, users: [] }
+  }
+}

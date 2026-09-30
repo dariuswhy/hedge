@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState, useMemo, Component, ReactNode } from 'react'
 import {
   Activity,
   Radio,
@@ -13,10 +12,11 @@ import {
   Briefcase,
   Crown,
   Clock,
-  ExternalLink,
-  DollarSign
+  RefreshCw,
+  TrendingUp
 } from 'lucide-react'
 import Link from 'next/link'
+import { getLivePresencesAction } from './actions'
 
 export interface ClientPresenceItem {
   id: string
@@ -34,14 +34,7 @@ interface LivePresenceMonitorProps {
   clients: ClientPresenceItem[]
 }
 
-interface PresencePayload {
-  user_id: string
-  full_name?: string
-  email?: string
-  role?: string
-  online_at: string
-  current_path?: string
-}
+const ONLINE_THRESHOLD_MS = 3 * 60 * 1000 // 3 minutes
 
 function formatRelativeTime(dateString?: string | null): { relative: string; exact: string } {
   if (!dateString) return { relative: 'Never logged in', exact: 'No session history' }
@@ -55,13 +48,11 @@ function formatRelativeTime(dateString?: string | null): { relative: string; exa
   const diffHours = Math.floor(diffMin / 60)
   const diffDays = Math.floor(diffHours / 24)
 
-  const exact = d.toLocaleString('ro-RO', {
+  const exact = d.toLocaleDateString('ro-RO', {
     day: '2-digit',
     month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+    year: 'numeric'
+  }) + ', ' + d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })
 
   if (diffSec < 60) return { relative: 'Just now', exact }
   if (diffMin < 60) return { relative: `${diffMin}m ago`, exact }
@@ -78,58 +69,84 @@ function formatRelativeTime(dateString?: string | null): { relative: string; exa
   return { relative: exact, exact }
 }
 
+function checkIsOnline(lastSeenAt?: string | null): boolean {
+  if (!lastSeenAt) return false
+  const d = new Date(lastSeenAt)
+  if (isNaN(d.getTime())) return false
+  const diff = Date.now() - d.getTime()
+  return diff >= 0 && diff <= ONLINE_THRESHOLD_MS
+}
+
 export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProps) {
-  const [onlineUsers, setOnlineUsers] = useState<Map<string, PresencePayload>>(new Map())
-  const [isWsConnected, setIsWsConnected] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const [presenceMap, setPresenceMap] = useState<Map<string, { lastSeenAt?: string | null; lastSignInAt?: string | null }>>(new Map())
   const [filterMode, setFilterMode] = useState<'all' | 'online' | 'offline'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   useEffect(() => {
-    const supabase = createClient()
-    const channel = supabase.channel('hedge-live-presence', {
-      config: {
-        presence: {
-          key: 'admin-monitor'
+    setMounted(true)
+
+    // Initial fetch of latest presence timestamps
+    const fetchLatest = async () => {
+      const res = await getLivePresencesAction()
+      if (res?.success && res.users) {
+        const map = new Map<string, { lastSeenAt?: string | null; lastSignInAt?: string | null }>()
+        for (const u of res.users) {
+          map.set(u.id, {
+            lastSeenAt: u.lastSeenAt,
+            lastSignInAt: u.lastSignInAt
+          })
         }
+        setPresenceMap(map)
+      }
+    }
+
+    fetchLatest()
+
+    // Background auto-refresh every 20 seconds
+    const interval = setInterval(fetchLatest, 20000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    const res = await getLivePresencesAction()
+    if (res?.success && res.users) {
+      const map = new Map<string, { lastSeenAt?: string | null; lastSignInAt?: string | null }>()
+      for (const u of res.users) {
+        map.set(u.id, {
+          lastSeenAt: u.lastSeenAt,
+          lastSignInAt: u.lastSignInAt
+        })
+      }
+      setPresenceMap(map)
+    }
+    setTimeout(() => setIsRefreshing(false), 500)
+  }
+
+  // Combine initial clients with live presence updates
+  const enrichedList = useMemo(() => {
+    return (clients || []).map((c) => {
+      const liveData = presenceMap.get(c.id)
+      const lastSeenAt = liveData ? (liveData.lastSeenAt || liveData.lastSignInAt) : (c.lastSeenAt || c.lastSignInAt)
+      const lastSignInAt = liveData ? liveData.lastSignInAt : c.lastSignInAt
+      const isOnline = checkIsOnline(lastSeenAt)
+
+      return {
+        ...c,
+        lastSeenAt,
+        lastSignInAt,
+        isOnline
       }
     })
-
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState()
-        const userMap = new Map<string, PresencePayload>()
-
-        Object.values(state).forEach((presences: any) => {
-          if (Array.isArray(presences)) {
-            presences.forEach((p: PresencePayload) => {
-              if (p?.user_id) {
-                userMap.set(p.user_id, p)
-              }
-            })
-          }
-        })
-
-        setOnlineUsers(userMap)
-      })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          setIsWsConnected(true)
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-          setIsWsConnected(false)
-        }
-      })
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
+  }, [clients, presenceMap])
 
   // Filter clients
   const filteredClients = useMemo(() => {
-    return clients.filter((c) => {
-      const isOnline = onlineUsers.has(c.id)
-      if (filterMode === 'online' && !isOnline) return false
-      if (filterMode === 'offline' && isOnline) return false
+    return enrichedList.filter((c) => {
+      if (filterMode === 'online' && !c.isOnline) return false
+      if (filterMode === 'offline' && c.isOnline) return false
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
@@ -140,10 +157,10 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
 
       return true
     })
-  }, [clients, onlineUsers, filterMode, searchQuery])
+  }, [enrichedList, filterMode, searchQuery])
 
-  const onlineCount = onlineUsers.size
-  const offlineCount = Math.max(0, clients.length - onlineCount)
+  const onlineCount = enrichedList.filter((c) => c.isOnline).length
+  const offlineCount = Math.max(0, enrichedList.length - onlineCount)
 
   return (
     <div className="glass-card rounded-3xl p-6 sm:p-8 space-y-6 border border-emerald-500/20 bg-gradient-to-b from-emerald-950/10 via-black/40 to-black/60 shadow-2xl relative overflow-hidden">
@@ -164,9 +181,9 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 Live Telemetry Feed
               </span>
-              <span className="text-[11px] font-mono text-gray-400 flex items-center gap-1">
-                <Wifi className={`w-3.5 h-3.5 ${isWsConnected ? 'text-emerald-400' : 'text-gray-500'}`} />
-                {isWsConnected ? 'Realtime WebSocket Active' : 'Connecting...'}
+              <span className="text-[11px] font-mono text-gray-400 flex items-center gap-1.5">
+                <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+                Active Monitor
               </span>
             </div>
             <h3 className="text-2xl font-light text-white tracking-tight">Investor Presence & Last Seen Monitor</h3>
@@ -176,8 +193,16 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
           </div>
         </div>
 
-        {/* Live Counters */}
+        {/* Live Counters & Refresh Button */}
         <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={handleManualRefresh}
+            title="Refresh Live Presence"
+            className="p-2.5 rounded-2xl bg-white/[0.03] hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white transition-all"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`} />
+          </button>
+
           <div className="px-4 py-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2.5 shadow-lg shadow-emerald-500/5">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -186,7 +211,7 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
             <div className="text-left">
               <p className="text-[9px] uppercase font-mono font-semibold tracking-wider text-emerald-400">Online Now</p>
               <p className="text-base font-bold font-mono text-white leading-none mt-0.5">
-                {onlineCount} {onlineCount === 1 ? 'Client' : 'Clients'}
+                {mounted ? onlineCount : 0} {onlineCount === 1 ? 'Client' : 'Clients'}
               </p>
             </div>
           </div>
@@ -226,7 +251,7 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
             }`}
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            Online Now ({onlineCount})
+            Online Now ({mounted ? onlineCount : 0})
           </button>
           <button
             onClick={() => setFilterMode('offline')}
@@ -236,7 +261,7 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
                 : 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white'
             }`}
           >
-            Offline / Idle ({offlineCount})
+            Offline / Idle ({mounted ? offlineCount : clients.length})
           </button>
         </div>
 
@@ -259,23 +284,23 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
           <Radio className="w-8 h-8 text-gray-500 mx-auto opacity-50" />
           <p className="text-gray-400 text-sm font-light">
             {filterMode === 'online'
-              ? 'No investors currently connected in active browser session.'
+              ? 'No investors currently connected in active session.'
               : 'No matching client accounts found for query.'}
           </p>
           <p className="text-[11px] text-gray-500 font-mono">
             {filterMode === 'online'
-              ? 'Realtime WebSocket heartbeat is actively monitoring.'
+              ? 'Heartbeat monitor refreshes automatically every 20 seconds.'
               : 'Try clearing the search query or changing filters.'}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredClients.map((client) => {
-            const isOnline = onlineUsers.has(client.id)
-            const presence = onlineUsers.get(client.id)
+            const isOnline = mounted && client.isOnline
             const isPocket = client.email?.includes('pocket') || client.full_name?.includes('Pocket')
             const isAdmin = client.role === 'admin'
             const lastSeen = formatRelativeTime(client.lastSeenAt || client.lastSignInAt)
+            const balanceNum = Number(client.currentBalance || 0)
 
             return (
               <div
@@ -360,20 +385,20 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
                       <div className="flex items-center justify-between text-xs font-mono">
                         <span className="text-emerald-400 flex items-center gap-1.5 text-[11px]">
                           <Activity className="w-3.5 h-3.5 animate-pulse" />
-                          Active on {presence?.current_path || '/client'}
+                          Active on platform
                         </span>
-                        <span className="text-[10px] text-gray-400">
-                          Since {new Date(presence?.online_at || Date.now()).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}
+                        <span className="text-[10px] text-emerald-400 font-semibold">
+                          Session Active
                         </span>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-between text-xs font-mono">
-                        <span className="text-gray-400 flex items-center gap-1.5 text-[11px]">
+                      <div className="flex items-center justify-between text-xs font-mono" suppressHydrationWarning>
+                        <span className="text-gray-400 flex items-center gap-1.5 text-[11px]" suppressHydrationWarning>
                           <Clock className="w-3.5 h-3.5 text-gray-500" />
-                          Last seen: <span className="text-gray-300">{lastSeen.relative}</span>
+                          Last seen: <span className="text-gray-300" suppressHydrationWarning>{mounted ? lastSeen.relative : '...'}</span>
                         </span>
-                        <span className="text-[10px] text-gray-500 truncate max-w-[110px]" title={lastSeen.exact}>
-                          {lastSeen.exact}
+                        <span className="text-[10px] text-gray-500 truncate max-w-[120px]" title={lastSeen.exact} suppressHydrationWarning>
+                          {mounted ? lastSeen.exact : ''}
                         </span>
                       </div>
                     )}
@@ -385,7 +410,7 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
                   <div>
                     <span className="text-[9px] uppercase font-mono text-gray-500 tracking-wider block">Portfolio Worth</span>
                     <span className="text-sm font-bold font-mono text-white">
-                      ${client.currentBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ${balanceNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
 
