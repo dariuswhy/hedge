@@ -380,3 +380,27 @@ export async function deleteResetRequestAction(requestId: string) {
   revalidatePath('/admin')
   return { success: 'Request deleted successfully' }
 }
+
+export async function recordUserHeartbeat(userId?: string) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const targetId = userId || user?.id
+    if (!targetId) return { success: false }
+
+    const supabaseAdmin = createAdminClient()
+    const { data: userData } = await supabaseAdmin.auth.admin.getUserById(targetId)
+    const existingMeta = userData?.user?.user_metadata || {}
+
+    await supabaseAdmin.auth.admin.updateUserById(targetId, {
+      user_metadata: {
+        ...existingMeta,
+        last_seen_at: new Date().toISOString()
+      }
+    })
+    return { success: true }
+  } catch (err: any) {
+    console.warn('Heartbeat update notice:', err?.message)
+    return { success: false }
+  }
+}

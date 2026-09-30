@@ -35,6 +35,7 @@ import {
 import AdminForms from './admin-forms'
 import ClientSearch from './client-search'
 import HedgePoolsManager from './hedge-pools-manager'
+import LivePresenceMonitor from './live-presence-monitor'
 import { HedgePool } from '@/lib/hedge-pools'
 import { sendStatements, deleteResetRequestAction } from './actions'
 import { approveResetRequestAction, respondToApplicationAction } from '../login/actions'
@@ -502,6 +503,9 @@ export default function AdminTabs({
                   </button>
                 </div>
               </div>
+
+              {/* Real-time Investor Presence & Last Seen Monitor (Admin Only) */}
+              <LivePresenceMonitor clients={clients} />
 
               {/* Quick Actions & Fund Performance Forms */}
               <div id="client-onboarding" className="glass-card rounded-3xl p-8 space-y-6 scroll-mt-28">

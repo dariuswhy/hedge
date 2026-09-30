@@ -50,6 +50,18 @@ export default async function AdminPage() {
     .from('profiles')
     .select('id, full_name, email, role')
 
+  // 1.1 Fetch Auth Users to get persistent last_sign_in_at and last_seen_at
+  const { data: authUsersData } = await supabaseAdmin.auth.admin.listUsers()
+  const authUsersMap = new Map<string, { last_sign_in_at?: string; last_seen_at?: string }>()
+  if (authUsersData?.users) {
+    for (const u of authUsersData.users) {
+      authUsersMap.set(u.id, {
+        last_sign_in_at: u.last_sign_in_at,
+        last_seen_at: (u.user_metadata?.last_seen_at as string) || u.last_sign_in_at
+      })
+    }
+  }
+
   // 2. Fetch Capital per client (latest snapshot per client)
   const { data: capitalRows } = await supabaseAdmin
     .from('invested_capital')
@@ -143,6 +155,8 @@ export default async function AdminPage() {
       ? userBalanceMap.get(c.id)!
       : baseInvested
 
+    const authInfo = authUsersMap.get(c.id)
+
     return {
       id: c.id,
       full_name: c.full_name,
@@ -150,7 +164,9 @@ export default async function AdminPage() {
       role: c.role,
       totalInvested: baseInvested,
       currentBalance: baseBalance,
-      freePocketReserve: isPocket ? profitPocketBalance : undefined
+      freePocketReserve: isPocket ? profitPocketBalance : undefined,
+      lastSignInAt: authInfo?.last_sign_in_at || null,
+      lastSeenAt: authInfo?.last_seen_at || authInfo?.last_sign_in_at || null
     }
   })
 

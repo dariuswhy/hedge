@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import ClientTabs from './client-tabs'
 import { fetchUserHedgePoolsWithClient } from '@/lib/hedge-pools'
 import { ShieldCheck } from 'lucide-react'
+import ClientPresence from './client-presence'
 
 export default async function ClientPage() {
   const supabase = await createClient()
@@ -80,6 +81,14 @@ export default async function ClientPage() {
             </div>
           </div>
         </header>
+
+        {/* Real-time Presence & Heartbeat Telemetry */}
+        <ClientPresence
+          userId={user.id}
+          userName={profile?.full_name || 'Investor'}
+          userEmail={user.email || ''}
+          userRole={profile?.role || 'client'}
+        />
 
         {/* Tabbed Navigation Container */}
         <ClientTabs
