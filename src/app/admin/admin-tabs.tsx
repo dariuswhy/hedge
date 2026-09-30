@@ -504,7 +504,7 @@ export default function AdminTabs({
               </div>
 
               {/* Quick Actions & Fund Performance Forms */}
-              <div className="glass-card rounded-3xl p-8 space-y-6">
+              <div id="client-onboarding" className="glass-card rounded-3xl p-8 space-y-6 scroll-mt-28">
                 <div className="flex items-center justify-between border-b border-white/10 pb-6">
                   <div>
                     <h3 className="text-2xl font-light text-white">Client Onboarding & Capital Injection</h3>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Search, Filter, ArrowUpDown, UserCheck, Wallet, TrendingUp, Layers, ChevronRight, Sparkles, DollarSign, Mail } from 'lucide-react'
+import { Search, Filter, ArrowUpDown, UserCheck, Wallet, TrendingUp, Layers, ChevronRight, Sparkles, DollarSign, Mail, UserPlus } from 'lucide-react'
 import Link from 'next/link'
 
 interface ClientItem {
@@ -101,10 +101,9 @@ export default function ClientSearch({ clients }: ClientSearchProps) {
 
       {/* Control Bar: Search Input, Filters, Sort */}
       <div className="glass-card rounded-2xl p-6 space-y-4">
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
-          
-          {/* Search Box */}
-          <div className="relative w-full lg:w-96">
+        {/* Row 1: Search Box & Create Client Button */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+          <div className="relative flex-1 max-w-lg">
             <Search className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -115,6 +114,17 @@ export default function ClientSearch({ clients }: ClientSearchProps) {
             />
           </div>
 
+          <Link
+            href="/admin?tab=overview#client-onboarding"
+            className="px-5 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/20 whitespace-nowrap"
+          >
+            <UserPlus className="w-4 h-4" />
+            + Create New Client Account
+          </Link>
+        </div>
+
+        {/* Row 2: Filters and Sorting */}
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-4 pt-3 border-t border-white/5">
           {/* Quick Filters */}
           <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
             <button
