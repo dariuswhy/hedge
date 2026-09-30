@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 import { createClientWithCapital, addCapital, updatePerformance } from './actions'
 import { UserPlus, DollarSign, TrendingUp, CheckCircle, AlertCircle } from 'lucide-react'
 
@@ -8,28 +8,36 @@ interface AdminFormsProps {
   clients: { id: string; full_name: string | null; email: string | null }[]
 }
 
-const initialState: { error?: string; success?: string } = {}
+type InviteState = { error?: string; success?: string; setupLink?: string; emailDelivered?: boolean }
+type SimpleState = { error?: string; success?: string }
+
+const initialInviteState: InviteState = {}
+const initialSimpleState: SimpleState = {}
 
 export default function AdminForms({ clients }: AdminFormsProps) {
-  const [inviteState, inviteFormAction, isInvitePending] = useActionState(
-    async (prevState: { error?: string; success?: string }, formData: FormData) => {
-      return await createClientWithCapital(prevState, formData)
+  const [copiedSetupLink, setCopiedSetupLink] = useState(false)
+  const [inviteState, inviteFormAction, isInvitePending] = useActionState<InviteState, FormData>(
+    async (prevState, formData) => {
+      const res = await createClientWithCapital(prevState, formData)
+      return (res || {}) as InviteState
     },
-    initialState
+    initialInviteState
   )
 
-  const [capitalState, capitalFormAction, isCapitalPending] = useActionState(
-    async (prevState: { error?: string; success?: string }, formData: FormData) => {
-      return await addCapital(prevState, formData)
+  const [capitalState, capitalFormAction, isCapitalPending] = useActionState<SimpleState, FormData>(
+    async (prevState, formData) => {
+      const res = await addCapital(prevState, formData)
+      return (res || {}) as SimpleState
     },
-    initialState
+    initialSimpleState
   )
 
-  const [perfState, perfFormAction, isPerfPending] = useActionState(
-    async (prevState: { error?: string; success?: string }, formData: FormData) => {
-      return await updatePerformance(prevState, formData)
+  const [perfState, perfFormAction, isPerfPending] = useActionState<SimpleState, FormData>(
+    async (prevState, formData) => {
+      const res = await updatePerformance(prevState, formData)
+      return (res || {}) as SimpleState
     },
-    initialState
+    initialSimpleState
   )
 
   return (
@@ -95,9 +103,45 @@ export default function AdminForms({ clients }: AdminFormsProps) {
           )}
 
           {inviteState?.success && (
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 shrink-0" />
-              {inviteState.success}
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] space-y-2">
+              <div className="flex items-center gap-2 font-medium">
+                <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>{inviteState.success}</span>
+              </div>
+              {inviteState.setupLink && (
+                <div className="pt-2 border-t border-emerald-500/20 space-y-1.5">
+                  <div className="text-[10px] text-gray-300 uppercase font-semibold tracking-wider flex items-center justify-between">
+                    <span>Direct Password Setup Link</span>
+                    <span className="text-[9px] text-emerald-400 font-mono">
+                      {inviteState.emailDelivered ? '✓ Email Sent' : 'Ready to Send'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={inviteState.setupLink}
+                      className="w-full bg-black/60 border border-emerald-500/30 rounded-lg px-2.5 py-1.5 text-[10px] font-mono text-gray-300 truncate select-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (inviteState.setupLink) {
+                          navigator.clipboard.writeText(inviteState.setupLink)
+                          setCopiedSetupLink(true)
+                          setTimeout(() => setCopiedSetupLink(false), 2000)
+                        }
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-semibold shrink-0 transition-colors"
+                    >
+                      {copiedSetupLink ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    Send this link to the client via WhatsApp or Email so they can choose their password and enter the dashboard immediately.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

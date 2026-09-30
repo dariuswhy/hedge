@@ -189,3 +189,78 @@ export function renderPasswordResetEmailHtml({
   </html>
   `
 }
+
+interface WelcomeInviteTemplateParams {
+  clientName: string
+  clientEmail: string
+  initialCapital?: number
+  setupLink: string
+}
+
+export function renderWelcomeInviteEmailHtml({
+  clientName,
+  clientEmail,
+  initialCapital,
+  setupLink
+}: WelcomeInviteTemplateParams): string {
+  const formattedCapital = typeof initialCapital === 'number' && initialCapital > 0
+    ? `$${initialCapital.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : null
+
+  return `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Hedge Capital</title>
+  </head>
+  <body style="background-color: #0f172a; margin: 0; padding: 30px 15px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #0b1329; border: 1px solid #1e293b; border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); overflow: hidden;">
+      
+      ${COMMON_HEADER}
+
+      <!-- BODY CONTENT -->
+      <div style="padding: 32px 24px; color: #f8fafc;">
+        
+        <div style="margin-bottom: 24px; text-align: center;">
+          <div style="display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; background-color: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 16px; margin-bottom: 12px;">
+            <span style="font-size: 24px;">✨</span>
+          </div>
+          <h1 style="font-size: 24px; font-weight: 600; color: #ffffff; margin: 0 0 6px 0;">Welcome, ${clientName}</h1>
+          <p style="font-size: 13px; color: #94a3b8; margin: 0;">Your institutional investment portal has been provisioned.</p>
+        </div>
+
+        <p style="font-size: 14px; color: #cbd5e1; line-height: 1.6; margin-bottom: 20px; text-align: center;">
+          Your Hedge Capital account has been approved and activated. You have full access to your personalized portfolio dashboard, real-time trade logs, and performance metrics.
+        </p>
+
+        ${formattedCapital ? `
+        <!-- INITIAL CAPITAL HIGHLIGHT -->
+        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 14px; padding: 20px; text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 11px; font-family: monospace; text-transform: uppercase; letter-spacing: 1.5px; color: #34d399; margin-bottom: 4px;">INITIAL CAPITAL ALLOCATION</div>
+          <div style="font-size: 32px; font-weight: 700; color: #ffffff; font-family: monospace;">${formattedCapital}</div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Settled in institutional custodial ledger</div>
+        </div>
+        ` : ''}
+
+        <!-- CTA BUTTON -->
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${setupLink}" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; text-decoration: none; padding: 14px 36px; border-radius: 12px; font-size: 14px; font-weight: 600; display: inline-block; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);">
+            Activate Account & Set Password →
+          </a>
+        </div>
+
+        <div style="background-color: #030712; border: 1px solid #1e293b; border-radius: 10px; padding: 14px 16px; margin-top: 24px; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+          <strong style="color: #ffffff;">Need assistance?</strong> Your dedicated portfolio managers Darius and Capitan are available via institutional support.
+        </div>
+      </div>
+
+      ${COMMON_FOOTER.replace('{{CLIENT_EMAIL}}', clientEmail)}
+
+    </div>
+  </body>
+  </html>
+  `
+}
+

@@ -27,7 +27,10 @@ import {
   Coins,
   Wallet,
   Crown,
-  Trash2
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpDown
 } from 'lucide-react'
 import AdminForms from './admin-forms'
 import ClientSearch from './client-search'
@@ -100,6 +103,154 @@ export default function AdminTabs({
   const [pocketReinvestPoolId, setPocketReinvestPoolId] = useState(hedgePools[0]?.id || '')
   const [pocketActionStatus, setPocketActionStatus] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [isExecutingPocket, setIsExecutingPocket] = useState(false)
+
+  // Founders Profit Pocket Ledger Filter & Pagination States
+  const [pocketSearch, setPocketSearch] = useState('')
+  const [pocketFilterType, setPocketFilterType] = useState<'ALL' | 'FEE' | 'PAYOUT' | 'REINVEST'>('ALL')
+  const [pocketDateFilter, setPocketDateFilter] = useState<'ALL' | 'TODAY' | '7DAYS' | '30DAYS' | 'MONTH'>('ALL')
+  const [pocketCurrentPage, setPocketCurrentPage] = useState(1)
+  const pocketPageSize = 10
+
+  // Master Financial Ledger Filter & Pagination States
+  const [ledgerSearch, setLedgerSearch] = useState('')
+  const [ledgerFilterType, setLedgerFilterType] = useState<'ALL' | 'CAPITAL' | 'WINS' | 'LOSSES' | 'WITHDRAWALS'>('ALL')
+  const [ledgerDateFilter, setLedgerDateFilter] = useState<'ALL' | 'TODAY' | '7DAYS' | '30DAYS' | 'MONTH'>('ALL')
+  const [ledgerCurrentPage, setLedgerCurrentPage] = useState(1)
+  const ledgerPageSize = 15
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setPocketCurrentPage(1)
+  }, [pocketSearch, pocketFilterType, pocketDateFilter])
+
+  useEffect(() => {
+    setLedgerCurrentPage(1)
+  }, [ledgerSearch, ledgerFilterType, ledgerDateFilter])
+
+  // Founders Profit Pocket comprehensive calculations:
+  // 1. Active Hedge Pool Stakes owned by Founders Profit Pocket
+  const pocketPoolHoldings: Array<{
+    poolId: string
+    poolName: string
+    strategy: string
+    allocated: number
+    splitPct: number
+    currentVal: number
+    profit: number
+    roiPct: number
+  }> = []
+
+  let pocketInvestedInPools = 0
+  let pocketCurrentPoolValue = 0
+
+  for (const pool of hedgePools) {
+    if (pool.members) {
+      const pocketMember = pool.members.find(m =>
+        m.profile?.email?.toLowerCase().includes('pocket') ||
+        m.profile?.full_name?.toLowerCase().includes('pocket')
+      )
+      if (pocketMember) {
+        const allocated = Number(pocketMember.allocated_amount || 0)
+        const currentVal = Number(pocketMember.current_member_value || 0)
+        const profit = currentVal - allocated
+        const roiPct = allocated > 0 ? (profit / allocated) * 100 : 0
+        pocketInvestedInPools += allocated
+        pocketCurrentPoolValue += currentVal
+
+        pocketPoolHoldings.push({
+          poolId: pool.id,
+          poolName: pool.name,
+          strategy: pool.strategy,
+          allocated,
+          splitPct: Number(pocketMember.split_percentage || 0),
+          currentVal,
+          profit,
+          roiPct
+        })
+      }
+    }
+  }
+
+  const pocketPoolsProfit = pocketCurrentPoolValue - pocketInvestedInPools
+  const pocketLiquidReserve = profitPocketBalance
+  const totalPocketWorth = Math.round((pocketLiquidReserve + pocketCurrentPoolValue) * 100) / 100
+
+  const totalPaidOutToOurselves = profitCutTransactions
+    .filter((t: any) => t.type === 'pocket_payout')
+    .reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0)
+
+  const totalHarvestedFromClients = profitCutTransactions
+    .filter((t: any) => t.type === 'fee')
+    .reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0)
+
+  const totalReinvestedInFunds = profitCutTransactions
+    .filter((t: any) => t.type === 'pocket_reinvest')
+    .reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0)
+
+  // Filtered Pocket Transactions
+  const filteredPocketTxs = profitCutTransactions.filter((tx: any) => {
+    if (pocketSearch.trim()) {
+      const q = pocketSearch.toLowerCase().trim()
+      const nameMatch = (tx.user_name || '').toLowerCase().includes(q)
+      const emailMatch = (tx.user_email || '').toLowerCase().includes(q)
+      const typeMatch = (tx.type || '').toLowerCase().includes(q)
+      if (!nameMatch && !emailMatch && !typeMatch) return false
+    }
+
+    if (pocketFilterType === 'FEE' && tx.type !== 'fee') return false
+    if (pocketFilterType === 'PAYOUT' && tx.type !== 'pocket_payout') return false
+    if (pocketFilterType === 'REINVEST' && tx.type !== 'pocket_reinvest') return false
+
+    if (pocketDateFilter !== 'ALL' && tx.created_at) {
+      const d = new Date(tx.created_at)
+      const now = new Date()
+      if (pocketDateFilter === 'TODAY' && d.toDateString() !== now.toDateString()) return false
+      if (pocketDateFilter === '7DAYS' && (now.getTime() - d.getTime()) / (1000 * 3600 * 24) > 7) return false
+      if (pocketDateFilter === '30DAYS' && (now.getTime() - d.getTime()) / (1000 * 3600 * 24) > 30) return false
+      if (pocketDateFilter === 'MONTH' && (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear())) return false
+    }
+
+    return true
+  })
+
+  const totalPocketPages = Math.max(1, Math.ceil(filteredPocketTxs.length / pocketPageSize))
+  const paginatedPocketTxs = filteredPocketTxs.slice((pocketCurrentPage - 1) * pocketPageSize, pocketCurrentPage * pocketPageSize)
+
+  // Filtered Master Ledger Transactions
+  const filteredLedgerTxs = recentTransactions.filter((tx: any) => {
+    const rawType = (tx.type || '').toUpperCase()
+    const rawAmount = Number(tx.amount || 0)
+    const isCapital = rawType.includes('CAPITAL') || rawType === 'DEPOSIT'
+    const isTrade = rawType.includes('TRADE')
+    const isLoss = isTrade ? rawAmount < 0 : rawType.includes('WITHDRAWAL')
+    const isWin = isTrade && rawAmount >= 0
+
+    if (ledgerSearch.trim()) {
+      const q = ledgerSearch.toLowerCase().trim()
+      const userMatch = (tx.user_name || '').toLowerCase().includes(q)
+      const typeMatch = rawType.toLowerCase().includes(q)
+      if (!userMatch && !typeMatch) return false
+    }
+
+    if (ledgerFilterType === 'CAPITAL' && !isCapital) return false
+    if (ledgerFilterType === 'WINS' && !isWin) return false
+    if (ledgerFilterType === 'LOSSES' && !isLoss) return false
+    if (ledgerFilterType === 'WITHDRAWALS' && !rawType.includes('WITHDRAWAL')) return false
+
+    if (ledgerDateFilter !== 'ALL' && tx.created_at) {
+      const d = new Date(tx.created_at)
+      const now = new Date()
+      if (ledgerDateFilter === 'TODAY' && d.toDateString() !== now.toDateString()) return false
+      if (ledgerDateFilter === '7DAYS' && (now.getTime() - d.getTime()) / (1000 * 3600 * 24) > 7) return false
+      if (ledgerDateFilter === '30DAYS' && (now.getTime() - d.getTime()) / (1000 * 3600 * 24) > 30) return false
+      if (ledgerDateFilter === 'MONTH' && (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear())) return false
+    }
+
+    return true
+  })
+
+  const totalLedgerPages = Math.max(1, Math.ceil(filteredLedgerTxs.length / ledgerPageSize))
+  const paginatedLedgerTxs = filteredLedgerTxs.slice((ledgerCurrentPage - 1) * ledgerPageSize, ledgerCurrentPage * ledgerPageSize)
 
   // Onboarding Request Meeting Modal State
   const [selectedRequestForMeeting, setSelectedRequestForMeeting] = useState<any | null>(null)
@@ -395,53 +546,173 @@ export default function AdminTabs({
                   </div>
                 </div>
 
-                {/* 3 Main Pocket KPI Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
-                  {/* Total Pocket Balance */}
-                  <div className="glass-card rounded-2xl p-6 bg-black/60 border border-amber-500/40 space-y-2 relative overflow-hidden group">
-                    <div className="flex items-center justify-between text-xs text-amber-300 font-semibold uppercase tracking-wider">
-                      <span>Total Pocket Reserve</span>
-                      <Coins className="w-4 h-4 text-amber-400" />
+                {/* 5 Main Pocket KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-2">
+                  {/* KPI 1: Total Combined Pocket Net Worth */}
+                  <div className="glass-card rounded-2xl p-5 bg-gradient-to-b from-amber-500/20 via-black/60 to-black/80 border border-amber-500/50 space-y-2 relative overflow-hidden group shadow-xl">
+                    <div className="flex items-center justify-between text-[11px] text-amber-300 font-semibold uppercase tracking-wider">
+                      <span>Total Pocket Worth</span>
+                      <Crown className="w-4 h-4 text-amber-400" />
                     </div>
-                    <p className="text-3xl font-bold font-mono text-white tracking-tight">
-                      ${profitPocketBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <p className="text-2xl lg:text-3xl font-bold font-mono text-white tracking-tight">
+                      ${totalPocketWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
-                    <p className="text-xs text-emerald-400 font-mono flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Active liquid balance ready for payout or reinvestment
+                    <p className="text-[11px] text-amber-300/80 font-mono">
+                      ${pocketLiquidReserve.toLocaleString(undefined, { minimumFractionDigits: 2 })} Cash + ${pocketCurrentPoolValue.toLocaleString(undefined, { minimumFractionDigits: 2 })} Funds
                     </p>
                   </div>
 
-                  {/* Partner 1: Darius (100% Co-Owner) */}
-                  <div className="glass-card rounded-2xl p-6 bg-black/60 border border-blue-500/30 space-y-2 relative overflow-hidden group">
-                    <div className="flex items-center justify-between text-xs text-blue-300 font-semibold uppercase tracking-wider">
-                      <span>Darius</span>
-                      <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold font-mono">100% CO-OWNER</span>
+                  {/* KPI 2: Paid Out to Ourselves */}
+                  <div className="glass-card rounded-2xl p-5 bg-gradient-to-b from-emerald-500/10 via-black/60 to-black/80 border border-emerald-500/40 space-y-2 relative overflow-hidden group">
+                    <div className="flex items-center justify-between text-[11px] text-emerald-300 font-semibold uppercase tracking-wider">
+                      <span>Paid Out to Ourselves</span>
+                      <Wallet className="w-4 h-4 text-emerald-400" />
                     </div>
-                    <p className="text-3xl font-bold font-mono text-blue-400 tracking-tight">
-                      ${profitPocketBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <p className="text-2xl lg:text-3xl font-bold font-mono text-emerald-400 tracking-tight">
+                      ${totalPaidOutToOurselves.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
-                    <p className="text-xs text-gray-400 font-mono flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-blue-400" />
-                      Founding Partner (Full Mutual Access)
+                    <p className="text-[11px] text-gray-400 font-mono">
+                      Withdrawn & pocketed by Darius & Capitan
                     </p>
                   </div>
 
-                  {/* Partner 2: Capitan (100% Co-Owner) */}
-                  <div className="glass-card rounded-2xl p-6 bg-black/60 border border-purple-500/30 space-y-2 relative overflow-hidden group">
-                    <div className="flex items-center justify-between text-xs text-purple-300 font-semibold uppercase tracking-wider">
-                      <span>Capitan</span>
-                      <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-[10px] font-bold font-mono">100% CO-OWNER</span>
+                  {/* KPI 3: Liquid Vault Reserve */}
+                  <div className="glass-card rounded-2xl p-5 bg-black/60 border border-white/10 space-y-2 relative overflow-hidden group">
+                    <div className="flex items-center justify-between text-[11px] text-blue-300 font-semibold uppercase tracking-wider">
+                      <span>Liquid Vault Reserve</span>
+                      <Coins className="w-4 h-4 text-blue-400" />
                     </div>
-                    <p className="text-3xl font-bold font-mono text-purple-400 tracking-tight">
-                      ${profitPocketBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <p className="text-2xl lg:text-3xl font-bold font-mono text-white tracking-tight">
+                      ${pocketLiquidReserve.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
-                    <p className="text-xs text-gray-400 font-mono flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-purple-400" />
-                      Founding Partner (Full Mutual Access)
+                    <p className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Ready for payout or reinvestment
+                    </p>
+                  </div>
+
+                  {/* KPI 4: Active Fund Holdings */}
+                  <div className="glass-card rounded-2xl p-5 bg-black/60 border border-purple-500/30 space-y-2 relative overflow-hidden group">
+                    <div className="flex items-center justify-between text-[11px] text-purple-300 font-semibold uppercase tracking-wider">
+                      <span>Capital in Hedge Pools</span>
+                      <Layers className="w-4 h-4 text-purple-400" />
+                    </div>
+                    <p className="text-2xl lg:text-3xl font-bold font-mono text-purple-400 tracking-tight">
+                      ${pocketCurrentPoolValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[11px] text-gray-400 font-mono">
+                      Principal: ${pocketInvestedInPools.toLocaleString(undefined, { minimumFractionDigits: 2 })} ({pocketPoolsProfit >= 0 ? '+' : ''}${pocketPoolsProfit.toFixed(2)})
+                    </p>
+                  </div>
+
+                  {/* KPI 5: Total Harvested Cuts */}
+                  <div className="glass-card rounded-2xl p-5 bg-black/60 border border-white/10 space-y-2 relative overflow-hidden group">
+                    <div className="flex items-center justify-between text-[11px] text-gray-400 font-semibold uppercase tracking-wider">
+                      <span>Lifetime Profit Cuts</span>
+                      <TrendingUp className="w-4 h-4 text-amber-400" />
+                    </div>
+                    <p className="text-2xl lg:text-3xl font-bold font-mono text-white tracking-tight">
+                      ${totalHarvestedFromClients.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[11px] text-gray-400 font-mono">
+                      Cumulative performance fees
                     </p>
                   </div>
                 </div>
+
+                {/* Partner Ownership Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                  {/* Partner 1: Darius */}
+                  <div className="glass-card rounded-2xl p-5 bg-black/60 border border-blue-500/30 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-blue-300 uppercase tracking-wider">Darius</span>
+                        <span className="px-2 py-0.2 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold font-mono">100% CO-OWNER</span>
+                      </div>
+                      <p className="text-xs text-gray-400">
+                        Entitled Net Worth: <strong className="text-white font-mono">${totalPocketWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wider block">Lifetime Paid Out</span>
+                      <span className="text-base font-bold font-mono text-emerald-400">
+                        ${totalPaidOutToOurselves.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Partner 2: Capitan */}
+                  <div className="glass-card rounded-2xl p-5 bg-black/60 border border-purple-500/30 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Capitan</span>
+                        <span className="px-2 py-0.2 rounded-full bg-purple-500/20 text-purple-400 text-[10px] font-bold font-mono">100% CO-OWNER</span>
+                      </div>
+                      <p className="text-xs text-gray-400">
+                        Entitled Net Worth: <strong className="text-white font-mono">${totalPocketWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wider block">Lifetime Paid Out</span>
+                      <span className="text-base font-bold font-mono text-emerald-400">
+                        ${totalPaidOutToOurselves.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Active Hedge Pool Positions Owned by Founders Profit Pocket */}
+                {pocketPoolHoldings.length > 0 && (
+                  <div className="p-5 rounded-2xl bg-black/40 border border-white/10 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-purple-300 flex items-center gap-2">
+                        <Layers className="w-3.5 h-3.5" />
+                        Active Hedge Pool Positions Owned by Founders Profit Pocket ({pocketPoolHoldings.length})
+                      </h4>
+                      <span className="text-xs font-mono font-bold text-white">
+                        Total Fund Equity: ${pocketCurrentPoolValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-xl border border-white/5">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-white/5 text-gray-400 uppercase tracking-wider font-semibold border-b border-white/10">
+                          <tr>
+                            <th className="py-2.5 px-3">Hedge Pool</th>
+                            <th className="py-2.5 px-3">Strategy</th>
+                            <th className="py-2.5 px-3">Allocated Principal</th>
+                            <th className="py-2.5 px-3">Ownership Split %</th>
+                            <th className="py-2.5 px-3">Current Stake Value</th>
+                            <th className="py-2.5 px-3">Unrealized ROI</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5 font-mono text-gray-200">
+                          {pocketPoolHoldings.map((h) => (
+                            <tr key={h.poolId} className="hover:bg-white/5">
+                              <td className="py-3 px-3 font-bold text-white font-sans">
+                                {h.poolName}
+                              </td>
+                              <td className="py-3 px-3 text-gray-400 font-sans">
+                                {h.strategy || 'Multi-Asset Fund'}
+                              </td>
+                              <td className="py-3 px-3">
+                                ${h.allocated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-3 px-3 text-blue-400 font-bold">
+                                {h.splitPct.toFixed(1)}%
+                              </td>
+                              <td className="py-3 px-3 font-bold text-white">
+                                ${h.currentVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className={`py-3 px-3 font-bold ${h.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {h.profit >= 0 ? '+' : ''}${h.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({h.roiPct.toFixed(1)}%)
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Status Alert Message for Pocket Actions */}
@@ -636,6 +907,87 @@ export default function AdminTabs({
                   </div>
                 </div>
 
+                {/* Filter and Search Controls for Pocket Ledger */}
+                <div className="space-y-3 p-4 bg-black/40 rounded-2xl border border-white/10">
+                  <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+                    {/* Search */}
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Search by client name, email, or transaction note..."
+                        value={pocketSearch}
+                        onChange={(e) => setPocketSearch(e.target.value)}
+                        className="w-full bg-black/60 border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 transition-all"
+                      />
+                      {pocketSearch && (
+                        <button
+                          onClick={() => setPocketSearch('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-xs"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Date quick filter */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+                      <span className="text-[11px] text-gray-500 uppercase font-semibold mr-1 flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-amber-400" /> Date:
+                      </span>
+                      {[
+                        { id: 'ALL', label: 'All' },
+                        { id: 'TODAY', label: 'Today' },
+                        { id: '7DAYS', label: '7 Days' },
+                        { id: '30DAYS', label: '30 Days' },
+                        { id: 'MONTH', label: 'Month' }
+                      ].map((d) => (
+                        <button
+                          key={d.id}
+                          onClick={() => setPocketDateFilter(d.id as any)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                            pocketDateFilter === d.id
+                              ? 'bg-amber-500 text-black font-semibold shadow-sm'
+                              : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                          }`}
+                        >
+                          {d.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Filter Pills */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
+                    <span className="text-[11px] text-gray-500 uppercase font-semibold mr-1 flex items-center gap-1">
+                      <Filter className="w-3 h-3 text-amber-400" /> Type:
+                    </span>
+                    {[
+                      { id: 'ALL', label: 'All Records', count: profitCutTransactions.length },
+                      { id: 'FEE', label: 'Profit Cuts (+ Inflow)', count: profitCutTransactions.filter((t: any) => t.type === 'fee').length },
+                      { id: 'PAYOUT', label: 'Partner Payouts (- Outflow)', count: profitCutTransactions.filter((t: any) => t.type === 'pocket_payout').length },
+                      { id: 'REINVEST', label: 'Fund Reinvestments (->)', count: profitCutTransactions.filter((t: any) => t.type === 'pocket_reinvest').length }
+                    ].map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => setPocketFilterType(f.id as any)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                          pocketFilterType === f.id
+                            ? 'bg-amber-500 text-black shadow-md'
+                            : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        <span>{f.label}</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                          pocketFilterType === f.id ? 'bg-black/20 text-black font-bold' : 'bg-white/10 text-gray-400'
+                        }`}>
+                          {f.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-white/5 text-gray-400 text-xs uppercase tracking-wider font-semibold border-b border-white/10">
@@ -649,18 +1001,21 @@ export default function AdminTabs({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5 text-gray-200">
-                      {profitCutTransactions.length === 0 ? (
+                      {filteredPocketTxs.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="py-12 text-center text-gray-400 space-y-2">
                             <Coins className="w-8 h-8 text-gray-600 mx-auto" />
-                            <p>Founders Pocket is fresh and ready at $0.00.</p>
-                            <p className="text-xs text-gray-500">
-                              When you execute a "Profit Cut" on any client account, the fees will automatically stream directly into this pocket.
-                            </p>
+                            <p>No transactions match your current search/filter.</p>
+                            <button
+                              onClick={() => { setPocketSearch(''); setPocketFilterType('ALL'); setPocketDateFilter('ALL'); }}
+                              className="text-xs text-amber-400 hover:underline"
+                            >
+                              Reset Filters
+                            </button>
                           </td>
                         </tr>
                       ) : (
-                        profitCutTransactions.map((tx: any, idx: number) => {
+                        paginatedPocketTxs.map((tx: any, idx: number) => {
                           const cutAmount = Number(tx.amount || 0)
                           const isFee = tx.type === 'fee'
                           const isPayout = tx.type === 'pocket_payout'
@@ -710,6 +1065,32 @@ export default function AdminTabs({
                     </tbody>
                   </table>
                 </div>
+
+                {/* Pagination Controls */}
+                {totalPocketPages > 1 && (
+                  <div className="flex items-center justify-between text-xs text-gray-400 pt-2 px-1">
+                    <span>
+                      Page <strong className="text-white">{pocketCurrentPage}</strong> of{' '}
+                      <strong className="text-white">{totalPocketPages}</strong> ({filteredPocketTxs.length} total entries)
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setPocketCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={pocketCurrentPage === 1}
+                        className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                      </button>
+                      <button
+                        onClick={() => setPocketCurrentPage(p => Math.min(totalPocketPages, p + 1))}
+                        disabled={pocketCurrentPage === totalPocketPages}
+                        className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1"
+                      >
+                        Next <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -734,6 +1115,88 @@ export default function AdminTabs({
                 </div>
               </div>
 
+              {/* Search & Filter Controls for Master Ledger */}
+              <div className="space-y-3 p-4 bg-black/40 rounded-2xl border border-white/10">
+                <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+                  {/* Search */}
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search ledger by client, type, or amount..."
+                      value={ledgerSearch}
+                      onChange={(e) => setLedgerSearch(e.target.value)}
+                      className="w-full bg-black/60 border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
+                    />
+                    {ledgerSearch && (
+                      <button
+                        onClick={() => setLedgerSearch('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Date quick filter */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+                    <span className="text-[11px] text-gray-500 uppercase font-semibold mr-1 flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-blue-400" /> Date:
+                    </span>
+                    {[
+                      { id: 'ALL', label: 'All' },
+                      { id: 'TODAY', label: 'Today' },
+                      { id: '7DAYS', label: '7 Days' },
+                      { id: '30DAYS', label: '30 Days' },
+                      { id: 'MONTH', label: 'Month' }
+                    ].map((d) => (
+                      <button
+                        key={d.id}
+                        onClick={() => setLedgerDateFilter(d.id as any)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                          ledgerDateFilter === d.id
+                            ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                            : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Filter Pills */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
+                  <span className="text-[11px] text-gray-500 uppercase font-semibold mr-1 flex items-center gap-1">
+                    <Filter className="w-3 h-3 text-blue-400" /> Filter:
+                  </span>
+                  {[
+                    { id: 'ALL', label: 'All Records', count: recentTransactions.length },
+                    { id: 'CAPITAL', label: 'Capital Injections', count: recentTransactions.filter((t: any) => (t.type || '').toUpperCase().includes('CAPITAL') || (t.type || '').toUpperCase() === 'DEPOSIT').length },
+                    { id: 'WINS', label: 'Trade Wins', count: recentTransactions.filter((t: any) => (t.type || '').toUpperCase().includes('TRADE') && Number(t.amount || 0) >= 0).length },
+                    { id: 'LOSSES', label: 'Trade Losses', count: recentTransactions.filter((t: any) => (t.type || '').toUpperCase().includes('TRADE') && Number(t.amount || 0) < 0).length },
+                    { id: 'WITHDRAWALS', label: 'Withdrawals', count: recentTransactions.filter((t: any) => (t.type || '').toUpperCase().includes('WITHDRAWAL')).length }
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setLedgerFilterType(f.id as any)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                        ledgerFilterType === f.id
+                          ? 'bg-blue-600 text-white shadow-md'
+                          : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <span>{f.label}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                        ledgerFilterType === f.id ? 'bg-black/20 text-white font-bold' : 'bg-white/10 text-gray-400'
+                      }`}>
+                        {f.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-white/5 text-gray-400 text-xs uppercase tracking-wider font-semibold border-b border-white/10">
@@ -746,14 +1209,20 @@ export default function AdminTabs({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5 text-gray-200">
-                    {recentTransactions.length === 0 ? (
+                    {filteredLedgerTxs.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-12 text-center text-gray-400">
-                          No transaction activity recorded in ledger yet.
+                        <td colSpan={5} className="py-12 text-center text-gray-400 space-y-2">
+                          <p>No transaction activity matching current filters.</p>
+                          <button
+                            onClick={() => { setLedgerSearch(''); setLedgerFilterType('ALL'); setLedgerDateFilter('ALL'); }}
+                            className="text-xs text-blue-400 hover:underline"
+                          >
+                            Reset Filters
+                          </button>
                         </td>
                       </tr>
                     ) : (
-                      recentTransactions.map((tx: any, idx: number) => {
+                      paginatedLedgerTxs.map((tx: any, idx: number) => {
                         const rawType = (tx.type || '').toUpperCase()
                         const rawAmount = Number(tx.amount || 0)
                         const isCapital = rawType.includes('CAPITAL') || rawType === 'DEPOSIT'
@@ -767,10 +1236,6 @@ export default function AdminTabs({
                         else if (isLoss && isTrade) typeLabel = `Trade Loss (${rawType.replace('TRADE_', '')})`
                         else if (rawType.includes('WITHDRAWAL')) typeLabel = 'Capital Withdrawal'
 
-                        // 3-Color Financial System:
-                        // Capital -> Amber / Gold
-                        // Win Trade -> Emerald Green
-                        // Loss Trade / Withdrawal -> Red
                         const badgeStyle = isCapital
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                           : isWin
@@ -814,6 +1279,32 @@ export default function AdminTabs({
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination Controls */}
+              {totalLedgerPages > 1 && (
+                <div className="flex items-center justify-between text-xs text-gray-400 pt-2 px-1">
+                  <span>
+                    Page <strong className="text-white">{ledgerCurrentPage}</strong> of{' '}
+                    <strong className="text-white">{totalLedgerPages}</strong> ({filteredLedgerTxs.length} total entries)
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setLedgerCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={ledgerCurrentPage === 1}
+                      className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                    </button>
+                    <button
+                      onClick={() => setLedgerCurrentPage(p => Math.min(totalLedgerPages, p + 1))}
+                      disabled={ledgerCurrentPage === totalLedgerPages}
+                      className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1"
+                    >
+                      Next <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

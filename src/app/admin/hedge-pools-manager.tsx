@@ -19,7 +19,12 @@ import {
   Trash2,
   Coins,
   Search,
-  ChevronDown
+  ChevronDown,
+  Filter,
+  Calendar,
+  ChevronLeft,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react'
 import { HedgePool, HedgePoolMember, getUnallocatedFreeCapital } from '@/lib/hedge-pools'
 import {
@@ -213,6 +218,108 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const activePool = pools.find(p => p.id === selectedPoolId) || pools[0]
+
+  // Trade search, filter, date bar, and pagination states
+  const [tradeSearch, setTradeSearch] = useState('')
+  const [tradeFilterType, setTradeFilterType] = useState<'ALL' | 'TRADES' | 'PROFIT_CUTS' | 'INJECTIONS' | 'WINS' | 'LOSSES'>('ALL')
+  const [tradeDateFilter, setTradeDateFilter] = useState<'ALL' | 'TODAY' | '7DAYS' | '30DAYS' | 'MONTH' | 'CUSTOM'>('ALL')
+  const [tradeDateFrom, setTradeDateFrom] = useState('')
+  const [tradeDateTo, setTradeDateTo] = useState('')
+  const [tradeSortBy, setTradeSortBy] = useState<'date' | 'pnl' | 'size' | 'asset'>('date')
+  const [tradeSortOrder, setTradeSortOrder] = useState<'desc' | 'asc'>('desc')
+  const [tradeCurrentPage, setTradeCurrentPage] = useState(1)
+  const [tradePageSize, setTradePageSize] = useState<number | 'ALL'>(15)
+
+  // Reset page when search or filter changes
+  useEffect(() => {
+    setTradeCurrentPage(1)
+  }, [tradeSearch, tradeFilterType, tradeDateFilter, tradeDateFrom, tradeDateTo, selectedPoolId])
+
+  const allTrades = activePool?.trades || []
+
+  // Pre-calculate counts for filter tabs
+  const tradesCount = allTrades.filter(t => !t.asset_symbol?.includes('PROFIT_CUT') && !t.asset_symbol?.includes('POCKET_INJECTION') && !t.notes?.toLowerCase().includes('profit cut') && !t.notes?.toLowerCase().includes('reinvestment')).length
+  const profitCutsCount = allTrades.filter(t => t.asset_symbol?.includes('PROFIT_CUT') || t.notes?.toLowerCase().includes('profit cut')).length
+  const injectionsCount = allTrades.filter(t => t.asset_symbol?.includes('POCKET_INJECTION') || t.notes?.toLowerCase().includes('reinvestment')).length
+  const winsCount = allTrades.filter(t => Number(t.pnl_amount) > 0).length
+  const lossesCount = allTrades.filter(t => Number(t.pnl_amount) < 0).length
+
+  // Filtered and sorted trades
+  const filteredTrades = allTrades.filter((t) => {
+    if (tradeSearch.trim()) {
+      const q = tradeSearch.toLowerCase().trim()
+      const symbolMatch = (t.asset_symbol || '').toLowerCase().includes(q)
+      const typeMatch = (t.trade_type || '').toLowerCase().includes(q)
+      const notesMatch = (t.notes || '').toLowerCase().includes(q)
+      if (!symbolMatch && !typeMatch && !notesMatch) return false
+    }
+
+    const isProfitCut = t.asset_symbol?.includes('PROFIT_CUT') || t.notes?.toLowerCase().includes('profit cut')
+    const isInjection = t.asset_symbol?.includes('POCKET_INJECTION') || t.notes?.toLowerCase().includes('reinvestment')
+    const isRegularTrade = !isProfitCut && !isInjection
+    const isWin = Number(t.pnl_amount) > 0
+    const isLoss = Number(t.pnl_amount) < 0
+
+    if (tradeFilterType === 'TRADES' && !isRegularTrade) return false
+    if (tradeFilterType === 'PROFIT_CUTS' && !isProfitCut) return false
+    if (tradeFilterType === 'INJECTIONS' && !isInjection) return false
+    if (tradeFilterType === 'WINS' && !isWin) return false
+    if (tradeFilterType === 'LOSSES' && !isLoss) return false
+
+    if (tradeDateFilter !== 'ALL' && t.created_at) {
+      const tradeDate = new Date(t.created_at)
+      const now = new Date()
+
+      if (tradeDateFilter === 'TODAY') {
+        if (tradeDate.toDateString() !== now.toDateString()) return false
+      } else if (tradeDateFilter === '7DAYS') {
+        const diffDays = (now.getTime() - tradeDate.getTime()) / (1000 * 3600 * 24)
+        if (diffDays > 7) return false
+      } else if (tradeDateFilter === '30DAYS') {
+        const diffDays = (now.getTime() - tradeDate.getTime()) / (1000 * 3600 * 24)
+        if (diffDays > 30) return false
+      } else if (tradeDateFilter === 'MONTH') {
+        if (tradeDate.getMonth() !== now.getMonth() || tradeDate.getFullYear() !== now.getFullYear()) return false
+      } else if (tradeDateFilter === 'CUSTOM') {
+        if (tradeDateFrom) {
+          const fromDate = new Date(tradeDateFrom)
+          if (tradeDate < fromDate) return false
+        }
+        if (tradeDateTo) {
+          const toDate = new Date(tradeDateTo)
+          toDate.setHours(23, 59, 59, 999)
+          if (tradeDate > toDate) return false
+        }
+      }
+    }
+
+    return true
+  }).sort((a, b) => {
+    let comparison = 0
+    if (tradeSortBy === 'date') {
+      const dateA = new Date(a.created_at || 0).getTime()
+      const dateB = new Date(b.created_at || 0).getTime()
+      comparison = dateA - dateB
+    } else if (tradeSortBy === 'pnl') {
+      comparison = Number(a.pnl_amount || 0) - Number(b.pnl_amount || 0)
+    } else if (tradeSortBy === 'size') {
+      comparison = Number(a.position_size || 0) - Number(b.position_size || 0)
+    } else if (tradeSortBy === 'asset') {
+      comparison = (a.asset_symbol || '').localeCompare(b.asset_symbol || '')
+    }
+    return tradeSortOrder === 'desc' ? -comparison : comparison
+  })
+
+  const totalTradesCount = filteredTrades.length
+  const effectivePageSize = tradePageSize === 'ALL' ? totalTradesCount : Number(tradePageSize)
+  const totalPages = Math.max(1, Math.ceil(totalTradesCount / (effectivePageSize || 1)))
+  const safeCurrentPage = Math.min(tradeCurrentPage, totalPages)
+  const paginatedTrades = tradePageSize === 'ALL'
+    ? filteredTrades
+    : filteredTrades.slice((safeCurrentPage - 1) * effectivePageSize, safeCurrentPage * effectivePageSize)
+
+  const filteredPnL = filteredTrades.reduce((acc, t) => acc + Number(t.pnl_amount || 0), 0)
+  const filteredVolume = filteredTrades.reduce((acc, t) => acc + Number(t.position_size || 0), 0)
 
   const handleOpenMergeModal = (pool: HedgePool) => {
     handleSelectPool(pool.id)
@@ -688,77 +795,343 @@ export default function HedgePoolsManager({ pools, clients }: HedgePoolsManagerP
 
           {/* Individual Trades Log Section */}
           <div className="space-y-4 pt-6 border-t border-white/10">
-            <div className="flex items-center justify-between">
+            {/* Header + Action */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h4 className="text-lg font-semibold text-white flex items-center gap-2">
                   <Activity className="w-5 h-5 text-emerald-400" />
                   Individual Trades Executed on "{activePool.name}"
                 </h4>
                 <p className="text-xs text-gray-400">
-                  Audit log of active asset trades, positions, entry/exit prices, and realized PnL.
+                  Audit log of active asset trades, positions, profit cuts, and realized PnL.
                 </p>
               </div>
               <button
                 onClick={() => setShowAddTradeModal(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5"
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" /> Log Trade
               </button>
             </div>
 
+            {/* Quick Summary KPIs on Filtered Trades */}
+            {allTrades.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                  <div className="text-[10px] uppercase font-semibold text-gray-400 tracking-wider">Filtered Records</div>
+                  <div className="text-base font-bold font-mono text-white mt-0.5">
+                    {totalTradesCount} <span className="text-xs font-normal text-gray-500">/ {allTrades.length}</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                  <div className="text-[10px] uppercase font-semibold text-gray-400 tracking-wider">Realized PnL</div>
+                  <div className={`text-base font-bold font-mono mt-0.5 ${filteredPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {filteredPnL >= 0 ? '+' : ''}${filteredPnL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                  <div className="text-[10px] uppercase font-semibold text-gray-400 tracking-wider">Total Volume</div>
+                  <div className="text-base font-bold font-mono text-blue-400 mt-0.5">
+                    ${filteredVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                  <div className="text-[10px] uppercase font-semibold text-gray-400 tracking-wider">Win Rate</div>
+                  <div className="text-base font-bold font-mono text-amber-400 mt-0.5">
+                    {totalTradesCount > 0 ? ((filteredTrades.filter(t => Number(t.pnl_amount) > 0).length / totalTradesCount) * 100).toFixed(0) : 0}%
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Search Bar + Filter Pills */}
+            <div className="space-y-3 p-4 bg-black/40 rounded-2xl border border-white/10">
+              <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+                {/* Search Input */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search by asset (NQ, ES...), type, or notes..."
+                    value={tradeSearch}
+                    onChange={(e) => setTradeSearch(e.target.value)}
+                    className="w-full bg-black/60 border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 transition-all"
+                  />
+                  {tradeSearch && (
+                    <button
+                      onClick={() => setTradeSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Sort selector */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400 shrink-0">
+                    <ArrowUpDown className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Sort:</span>
+                  </div>
+                  <select
+                    value={tradeSortBy}
+                    onChange={(e) => setTradeSortBy(e.target.value as any)}
+                    className="bg-black/60 border border-white/10 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="date">Date Executed</option>
+                    <option value="pnl">Realized PnL</option>
+                    <option value="size">Position Size</option>
+                    <option value="asset">Asset Symbol</option>
+                  </select>
+
+                  <button
+                    onClick={() => setTradeSortOrder(tradeSortOrder === 'desc' ? 'asc' : 'desc')}
+                    className="p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white text-xs flex items-center gap-1"
+                    title={tradeSortOrder === 'desc' ? 'Descending (Newest / Highest)' : 'Ascending (Oldest / Lowest)'}
+                  >
+                    {tradeSortOrder === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowUp className="w-3.5 h-3.5 text-emerald-400" />}
+                  </button>
+
+                  {/* Page Size */}
+                  <select
+                    value={tradePageSize}
+                    onChange={(e) => setTradePageSize(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+                    className="bg-black/60 border border-white/10 rounded-xl px-2 py-2 text-xs text-gray-300 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value={10}>10 / pg</option>
+                    <option value={15}>15 / pg</option>
+                    <option value={25}>25 / pg</option>
+                    <option value={50}>50 / pg</option>
+                    <option value="ALL">All ({allTrades.length})</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
+                <span className="text-[11px] text-gray-500 uppercase font-semibold mr-1 flex items-center gap-1">
+                  <Filter className="w-3 h-3" /> Category:
+                </span>
+                {[
+                  { id: 'ALL', label: 'All Records', count: allTrades.length },
+                  { id: 'TRADES', label: 'Market Trades', count: tradesCount },
+                  { id: 'PROFIT_CUTS', label: 'Profit Cuts', count: profitCutsCount },
+                  { id: 'INJECTIONS', label: 'Injections', count: injectionsCount },
+                  { id: 'WINS', label: 'Wins (+)', count: winsCount },
+                  { id: 'LOSSES', label: 'Losses (-)', count: lossesCount }
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setTradeFilterType(cat.id as any)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-all ${
+                      tradeFilterType === cat.id
+                        ? 'bg-emerald-500 text-black shadow-md'
+                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <span>{cat.label}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                      tradeFilterType === cat.id ? 'bg-black/20 text-black font-bold' : 'bg-white/10 text-gray-400'
+                    }`}>
+                      {cat.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Date Filter Bar ("Data Bar") */}
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
+                <span className="text-[11px] text-gray-500 uppercase font-semibold mr-1 flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-blue-400" /> Date Range:
+                </span>
+                {[
+                  { id: 'ALL', label: 'All Time' },
+                  { id: 'TODAY', label: 'Today' },
+                  { id: '7DAYS', label: 'Last 7 Days' },
+                  { id: '30DAYS', label: 'Last 30 Days' },
+                  { id: 'MONTH', label: 'This Month' },
+                  { id: 'CUSTOM', label: 'Custom Date' }
+                ].map((d) => (
+                  <button
+                    key={d.id}
+                    onClick={() => setTradeDateFilter(d.id as any)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                      tradeDateFilter === d.id
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+
+                {/* Custom Date Pickers */}
+                {tradeDateFilter === 'CUSTOM' && (
+                  <div className="flex items-center gap-2 pl-2 border-l border-white/10">
+                    <span className="text-[10px] text-gray-400">From:</span>
+                    <input
+                      type="date"
+                      value={tradeDateFrom}
+                      onChange={(e) => setTradeDateFrom(e.target.value)}
+                      className="bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-[10px] text-gray-400">To:</span>
+                    <input
+                      type="date"
+                      value={tradeDateTo}
+                      onChange={(e) => setTradeDateTo(e.target.value)}
+                      className="bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-blue-500"
+                    />
+                    {(tradeDateFrom || tradeDateTo) && (
+                      <button
+                        onClick={() => { setTradeDateFrom(''); setTradeDateTo(''); }}
+                        className="text-[10px] text-red-400 hover:underline"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* The Table */}
             {(!activePool.trades || activePool.trades.length === 0) ? (
-              <div className="p-6 text-center bg-black/20 rounded-2xl border border-dashed border-white/10 text-gray-400 text-xs">
+              <div className="p-8 text-center bg-black/20 rounded-2xl border border-dashed border-white/10 text-gray-400 text-xs">
                 No active asset trades logged for this Hedge Pool yet.
               </div>
+            ) : filteredTrades.length === 0 ? (
+              <div className="p-8 text-center bg-black/20 rounded-2xl border border-dashed border-white/10 space-y-2">
+                <Search className="w-6 h-6 text-gray-600 mx-auto" />
+                <p className="text-sm text-gray-300 font-medium">No matching trades or records found</p>
+                <p className="text-xs text-gray-500">
+                  Try adjusting your search terms, category pills, or date range filter.
+                </p>
+                <button
+                  onClick={() => {
+                    setTradeSearch('')
+                    setTradeFilterType('ALL')
+                    setTradeDateFilter('ALL')
+                    setTradeDateFrom('')
+                    setTradeDateTo('')
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold mt-2 inline-block"
+                >
+                  Clear All Filters
+                </button>
+              </div>
             ) : (
-              <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-white/5 text-gray-400 uppercase tracking-wider font-semibold border-b border-white/10">
-                    <tr>
-                      <th className="py-3 px-4">Asset Symbol</th>
-                      <th className="py-3 px-4">Type</th>
-                      <th className="py-3 px-4">Position Size</th>
-                      <th className="py-3 px-4">Entry / Exit Price</th>
-                      <th className="py-3 px-4">Realized PnL</th>
-                      <th className="py-3 px-4">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5 text-gray-200 font-mono">
-                    {activePool.trades.map((t) => {
-                      const isProfit = t.pnl_amount >= 0
-                      return (
-                        <tr key={t.id} className="hover:bg-white/5">
-                          <td className="py-3 px-4 font-bold text-white">
-                            {t.asset_symbol}
-                          </td>
-                          <td className="py-3 px-4 font-sans">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              t.trade_type === 'BUY_LONG'
-                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                                : t.trade_type === 'PROFIT_TAKE'
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                            }`}>
-                              {t.trade_type}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            ${Number(t.position_size).toLocaleString()}
-                          </td>
-                          <td className="py-3 px-4 text-gray-400">
-                            {t.entry_price ? `$${t.entry_price}` : '-'} / {t.exit_price ? `$${t.exit_price}` : '-'}
-                          </td>
-                          <td className={`py-3 px-4 font-bold ${isProfit ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {isProfit ? '+' : ''}${Number(t.pnl_amount).toLocaleString()}
-                          </td>
-                          <td className="py-3 px-4 font-sans text-gray-400 truncate max-w-[200px]">
-                            {t.notes || '-'}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+              <div className="space-y-3">
+                <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-white/5 text-gray-400 uppercase tracking-wider font-semibold border-b border-white/10">
+                      <tr>
+                        <th className="py-3 px-4">Date & Time</th>
+                        <th className="py-3 px-4">Asset Symbol</th>
+                        <th className="py-3 px-4">Type</th>
+                        <th className="py-3 px-4">Position Size</th>
+                        <th className="py-3 px-4">Entry / Exit Price</th>
+                        <th className="py-3 px-4">Realized PnL</th>
+                        <th className="py-3 px-4">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-gray-200 font-mono">
+                      {paginatedTrades.map((t) => {
+                        const isProfit = Number(t.pnl_amount) >= 0
+                        const isProfitCut = t.asset_symbol?.includes('PROFIT_CUT')
+                        const isInjection = t.asset_symbol?.includes('POCKET_INJECTION')
+
+                        return (
+                          <tr key={t.id} className="hover:bg-white/5 transition-colors">
+                            <td className="py-3 px-4 text-gray-400 whitespace-nowrap text-[11px]">
+                              {t.created_at ? new Date(t.created_at).toLocaleString() : 'Recent'}
+                            </td>
+                            <td className="py-3 px-4 font-bold text-white">
+                              {isProfitCut ? (
+                                <span className="text-amber-300 flex items-center gap-1 font-mono">
+                                  <Coins className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  {t.asset_symbol}
+                                </span>
+                              ) : isInjection ? (
+                                <span className="text-purple-300 flex items-center gap-1 font-mono">
+                                  <Layers className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                                  {t.asset_symbol}
+                                </span>
+                              ) : (
+                                <span className="text-white font-mono font-bold">
+                                  {t.asset_symbol}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                isProfitCut
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                  : isInjection
+                                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                                  : t.trade_type === 'BUY_LONG'
+                                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                  : t.trade_type === 'PROFIT_TAKE'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                  : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                              }`}>
+                                {isProfitCut ? 'PROFIT_CUT' : isInjection ? 'POCKET_INJECTION' : t.trade_type}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 font-semibold text-white">
+                              ${Number(t.position_size).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-3 px-4 text-gray-400">
+                              {t.entry_price ? `$${Number(t.entry_price).toFixed(2)}` : '-'} / {t.exit_price ? `$${Number(t.exit_price).toFixed(2)}` : '-'}
+                            </td>
+                            <td className={`py-3 px-4 font-bold text-sm ${isProfit ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {isProfit ? '+' : ''}${Number(t.pnl_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-3 px-4 font-sans text-gray-400 truncate max-w-[240px]" title={t.notes || ''}>
+                              {t.notes || '-'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination Controls */}
+                {tradePageSize !== 'ALL' && totalPages > 1 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 px-1 text-xs text-gray-400 font-sans">
+                    <div>
+                      Showing <span className="font-bold text-white">{(safeCurrentPage - 1) * effectivePageSize + 1}</span> to{' '}
+                      <span className="font-bold text-white">{Math.min(safeCurrentPage * effectivePageSize, totalTradesCount)}</span> of{' '}
+                      <span className="font-bold text-white">{totalTradesCount}</span> records
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setTradeCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={safeCurrentPage === 1}
+                        className="px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white disabled:opacity-30 disabled:pointer-events-none text-xs flex items-center gap-1 transition-all"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                      </button>
+
+                      <div className="px-3 py-1 rounded-lg bg-black/60 border border-white/10 text-xs font-mono text-white">
+                        Page {safeCurrentPage} of {totalPages}
+                      </div>
+
+                      <button
+                        onClick={() => setTradeCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={safeCurrentPage === totalPages}
+                        className="px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white disabled:opacity-30 disabled:pointer-events-none text-xs flex items-center gap-1 transition-all"
+                      >
+                        Next <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -4,10 +4,35 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { dispatchStatementsPayload } from '@/lib/statements'
+import { Resend } from 'resend'
+import { renderWelcomeInviteEmailHtml } from '@/lib/email-templates'
+
+const resend = new Resend(process.env.RESEND_API_KEY)
+
+function getSiteUrl() {
+  if (process.env.NEXT_PUBLIC_SITE_URL && !process.env.NEXT_PUBLIC_SITE_URL.includes('localhost')) {
+    return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')
+  }
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    return 'https://www.captainhedge.com'
+  }
+  return 'http://localhost:3000'
+}
+
+function sanitizeActionLink(link: string, siteUrl: string) {
+  if (!link) return `${siteUrl}/update-password`
+  return link
+    .replace(/https%3A%2F%2F[^&]*vercel\.app/gi, encodeURIComponent(`${siteUrl}/update-password`))
+    .replace(/https:\/\/[^/]*vercel\.app/gi, siteUrl)
+}
+
+function getFromEmail() {
+  return process.env.RESEND_FROM_EMAIL || 'Captain Hedge <onboarding@resend.dev>'
+}
 
 export async function createClientWithCapital(state: any, formData: FormData) {
-  const email = formData.get('email') as string
-  const fullName = formData.get('fullName') as string
+  const email = (formData.get('email') as string || '').trim().toLowerCase()
+  const fullName = (formData.get('fullName') as string || '').trim()
   const initialCapitalStr = formData.get('initialCapital') as string
   const initialCapital = parseFloat(initialCapitalStr) || 0
 
@@ -22,7 +47,10 @@ export async function createClientWithCapital(state: any, formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
 
-  // 1. Invite User via Supabase Admin Auth
+  const siteUrl = getSiteUrl()
+  let targetUserId: string | undefined
+
+  // 1. Attempt invite via Supabase Admin Auth
   const { data: newUser, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
     data: {
       full_name: fullName,
@@ -30,37 +58,95 @@ export async function createClientWithCapital(state: any, formData: FormData) {
     }
   })
 
-  let targetUserId = newUser?.user?.id
+  if (newUser?.user?.id) {
+    targetUserId = newUser.user.id
+  } else {
+    // Fallback: If inviteUserByEmail fails (e.g. SMTP rate limit, provider restrictions, or user exists)
+    console.warn('Invite email notice, attempting direct createUser fallback:', inviteErr?.message)
 
-  // Fallback if user already exists or in local demo mode
-  if (inviteErr) {
-    console.warn('Supabase invite notice:', inviteErr.message)
+    // Check if user already exists in profiles
     const { data: existingProfile } = await supabaseAdmin
       .from('profiles')
       .select('id')
       .eq('email', email)
-      .single()
-    if (existingProfile) {
+      .maybeSingle()
+
+    if (existingProfile?.id) {
       targetUserId = existingProfile.id
+    } else {
+      // Create user directly in Supabase Auth without waiting for email confirmation
+      const { data: directUser, error: directErr } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        email_confirm: true,
+        user_metadata: {
+          full_name: fullName,
+          role: 'client'
+        }
+      })
+
+      if (directErr) {
+        // If still failing because email exists in auth but not profiles:
+        console.warn('createUser notice:', directErr.message)
+        const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers()
+        const matched = authUsers?.users?.find(u => u.email?.toLowerCase() === email)
+        if (matched) {
+          targetUserId = matched.id
+        } else {
+          return { error: `Could not register user account: ${directErr.message || inviteErr?.message}` }
+        }
+      } else {
+        targetUserId = directUser?.user?.id
+      }
     }
   }
 
-  if (targetUserId && initialCapital > 0) {
-    // 2. Deposit Initial Capital
+  if (!targetUserId) {
+    return { error: `Failed to resolve or create user ID for ${email}.` }
+  }
+
+  // 2. Guarantee profile row in public.profiles table
+  const { error: profileErr } = await supabaseAdmin.from('profiles').upsert({
+    id: targetUserId,
+    email,
+    full_name: fullName,
+    role: 'client'
+  })
+
+  if (profileErr) {
+    console.error('Error upserting profile:', profileErr.message)
+  }
+
+  // 3. Generate high-security password setup / recovery link
+  let setupLink = `${siteUrl}/update-password`
+  try {
+    const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'recovery',
+      email,
+      options: {
+        redirectTo: `${siteUrl}/update-password`
+      }
+    })
+    if (linkData?.properties?.action_link) {
+      setupLink = sanitizeActionLink(linkData.properties.action_link, siteUrl)
+    }
+  } catch (linkErr: any) {
+    console.warn('Generate setup link warning:', linkErr?.message)
+  }
+
+  // 4. Record Initial Capital if specified
+  if (initialCapital > 0) {
     await supabaseAdmin.from('invested_capital').insert({
       id: crypto.randomUUID(),
       user_id: targetUserId,
       amount_invested: initialCapital
     })
 
-    // 3. Initialize Ledger
     await supabaseAdmin.from('ledger').insert({
       id: crypto.randomUUID(),
       user_id: targetUserId,
       current_value: initialCapital
     })
 
-    // 4. Audit Transaction
     await supabaseAdmin.from('transactions').insert({
       id: crypto.randomUUID(),
       user_id: targetUserId,
@@ -69,9 +155,38 @@ export async function createClientWithCapital(state: any, formData: FormData) {
     })
   }
 
+  // 5. Send institutional welcome email via Resend if configured
+  let emailDelivered = false
+  try {
+    if (process.env.RESEND_API_KEY) {
+      const emailHtml = renderWelcomeInviteEmailHtml({
+        clientName: fullName,
+        clientEmail: email,
+        initialCapital,
+        setupLink
+      })
+
+      const resendRes = await resend.emails.send({
+        from: getFromEmail(),
+        to: email,
+        subject: `Welcome to Hedge Capital - Account Activation for ${fullName}`,
+        html: emailHtml
+      })
+
+      if (resendRes.data?.id) {
+        emailDelivered = true
+      }
+    }
+  } catch (resendErr: any) {
+    console.warn('Resend welcome email warning:', resendErr?.message)
+  }
+
   revalidatePath('/admin')
   return {
-    success: `Client "${fullName}" created successfully with $${initialCapital.toLocaleString()} initial capital!`
+    success: `Client "${fullName}" (${email}) created successfully with $${initialCapital.toLocaleString()} initial capital!`,
+    setupLink,
+    clientEmail: email,
+    emailDelivered
   }
 }
 
