@@ -504,9 +504,6 @@ export default function AdminTabs({
                 </div>
               </div>
 
-              {/* Real-time Investor Presence & Last Seen Monitor (Admin Only) */}
-              <LivePresenceMonitor clients={clients} />
-
               {/* Quick Actions & Fund Performance Forms */}
               <div id="client-onboarding" className="glass-card rounded-3xl p-8 space-y-6 scroll-mt-28">
                 <div className="flex items-center justify-between border-b border-white/10 pb-6">
@@ -517,6 +514,9 @@ export default function AdminTabs({
                 </div>
                 <AdminForms clients={clients} />
               </div>
+
+              {/* Real-time Investor & Admin Presence & Last Seen Monitor (Admin Only) */}
+              <LivePresenceMonitor clients={clients} />
             </div>
           )}
 

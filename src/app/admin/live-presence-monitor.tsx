@@ -16,7 +16,7 @@ import {
   TrendingUp
 } from 'lucide-react'
 import Link from 'next/link'
-import { getLivePresencesAction } from './actions'
+import { getLivePresencesAction, recordUserHeartbeat } from './actions'
 
 export interface ClientPresenceItem {
   id: string
@@ -80,12 +80,27 @@ function checkIsOnline(lastSeenAt?: string | null): boolean {
 export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProps) {
   const [mounted, setMounted] = useState(false)
   const [presenceMap, setPresenceMap] = useState<Map<string, { lastSeenAt?: string | null; lastSignInAt?: string | null }>>(new Map())
-  const [filterMode, setFilterMode] = useState<'all' | 'online' | 'offline'>('all')
+  const [filterMode, setFilterMode] = useState<'all' | 'online' | 'admins' | 'offline'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   useEffect(() => {
     setMounted(true)
+
+    // Admin heartbeat so admins are tracked as online too
+    recordUserHeartbeat()
+    const heartbeatInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        recordUserHeartbeat()
+      }
+    }, 45000)
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        recordUserHeartbeat()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
 
     // Initial fetch of latest presence timestamps
     const fetchLatest = async () => {
@@ -106,7 +121,11 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
 
     // Background auto-refresh every 20 seconds
     const interval = setInterval(fetchLatest, 20000)
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      clearInterval(heartbeatInterval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [])
 
   const handleManualRefresh = async () => {
@@ -146,6 +165,7 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
   const filteredClients = useMemo(() => {
     return enrichedList.filter((c) => {
       if (filterMode === 'online' && !c.isOnline) return false
+      if (filterMode === 'admins' && c.role !== 'admin') return false
       if (filterMode === 'offline' && c.isOnline) return false
 
       if (searchQuery.trim()) {
@@ -160,6 +180,7 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
   }, [enrichedList, filterMode, searchQuery])
 
   const onlineCount = enrichedList.filter((c) => c.isOnline).length
+  const adminCount = enrichedList.filter((c) => c.role === 'admin').length
   const offlineCount = Math.max(0, enrichedList.length - onlineCount)
 
   return (
@@ -252,6 +273,17 @@ export default function LivePresenceMonitor({ clients }: LivePresenceMonitorProp
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             Online Now ({mounted ? onlineCount : 0})
+          </button>
+          <button
+            onClick={() => setFilterMode('admins')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
+              filterMode === 'admins'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20'
+                : 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white'
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5 text-purple-400" />
+            Admins ({adminCount})
           </button>
           <button
             onClick={() => setFilterMode('offline')}
