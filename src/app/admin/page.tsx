@@ -179,27 +179,27 @@ export default async function AdminPage() {
   }))
 
   return (
-    <div className="min-h-screen bg-[#030712] text-white pt-28 pb-16 px-4 sm:px-8">
-      <div className="max-w-[1650px] mx-auto space-y-10">
+    <div className="min-h-screen bg-[#030712] text-white pt-20 sm:pt-28 pb-20 sm:pb-16 px-3.5 sm:px-8">
+      <div className="max-w-[1650px] mx-auto space-y-6 sm:space-y-10">
         
         {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-white/10">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 pb-4 sm:pb-6 border-b border-white/10">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse" />
-              <span className="text-xs font-semibold text-purple-400 tracking-widest uppercase">
+            <div className="flex items-center gap-2.5 mb-1.5 sm:mb-2">
+              <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-purple-500 animate-pulse" />
+              <span className="text-[11px] sm:text-xs font-semibold text-purple-400 tracking-widest uppercase">
                 Admin Command Center
               </span>
             </div>
-            <h1 className="text-4xl font-light tracking-tight text-white">Institutional Oversight</h1>
-            <p className="text-gray-400 mt-1 text-base">
+            <h1 className="text-2xl sm:text-4xl font-light tracking-tight text-white">Institutional Oversight</h1>
+            <p className="text-gray-400 mt-1 text-xs sm:text-base">
               Manage client accounts, pooled hedge funds, client search, and master financial ledgers.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="glass px-5 py-2.5 rounded-full text-xs font-semibold flex items-center gap-2 text-purple-200 border border-purple-500/30">
-              <ShieldAlert className="w-4 h-4 text-purple-400" />
-              Admin Privilege Active (Darius & Capitan)
+          <div className="flex items-center gap-3 self-start md:self-auto">
+            <div className="glass px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-full text-[11px] sm:text-xs font-semibold flex items-center gap-2 text-purple-200 border border-purple-500/30">
+              <ShieldAlert className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400" />
+              Admin Privilege Active
             </div>
           </div>
         </header>

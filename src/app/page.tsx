@@ -109,17 +109,17 @@ export default function Home() {
         <div className="absolute inset-0 bg-black/75 backdrop-blur-[100px]" />
       </div>
 
-      <main className="relative z-10 flex flex-col items-center text-center px-6 pt-28 pb-20 max-w-6xl mx-auto w-full space-y-16">
+      <main className="relative z-10 flex flex-col items-center text-center px-4 sm:px-6 pt-20 sm:pt-28 pb-16 sm:pb-20 max-w-6xl mx-auto w-full space-y-10 sm:space-y-16">
         
         {/* Top Status Pill */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: 'easeOut' }}
-          className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full glass border border-blue-500/30 shadow-[0_0_25px_rgba(59,130,246,0.25)]"
+          className="inline-flex items-center gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-full glass border border-blue-500/30 shadow-[0_0_25px_rgba(59,130,246,0.25)]"
         >
-          <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-          <span className="text-xs font-semibold text-blue-200 tracking-wider uppercase">
+          <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-blue-500 animate-pulse" />
+          <span className="text-[10px] sm:text-xs font-semibold text-blue-200 tracking-wider uppercase">
             Institutional Whitelist Access • Private Allocation Q3
           </span>
         </motion.div>
@@ -129,14 +129,14 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.1, ease: 'easeOut' }}
-          className="space-y-6 max-w-4xl"
+          className="space-y-4 sm:space-y-6 max-w-4xl"
         >
-          <h1 className="text-5xl sm:text-7xl font-bold tracking-tight text-white leading-tight">
+          <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold tracking-tight text-white leading-tight">
             Institutional-Grade <br />
             <span className="text-gradient">Quantitative Asset Management</span>
           </h1>
 
-          <p className="text-lg md:text-xl text-gray-300 max-w-2xl mx-auto font-light leading-relaxed">
+          <p className="text-sm sm:text-lg md:text-xl text-gray-300 max-w-2xl mx-auto font-light leading-relaxed">
             Hedge Capital delivers non-correlated alpha returns through high-frequency quantitative delta-neutral strategies, algorithmic market making, and multi-investor pooled accounts.
           </p>
         </motion.div>
@@ -146,11 +146,11 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' }}
-          className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto"
+          className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 w-full sm:w-auto"
         >
           <Link
             href="/login"
-            className="group relative flex h-14 items-center justify-center gap-3 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-8 text-white font-semibold text-sm transition-all hover:scale-105 shadow-[0_0_30px_rgba(37,99,235,0.4)]"
+            className="group relative flex h-12 sm:h-14 items-center justify-center gap-2.5 sm:gap-3 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-6 sm:px-8 text-white font-semibold text-xs sm:text-sm transition-all hover:scale-105 shadow-[0_0_30px_rgba(37,99,235,0.4)] w-full sm:w-auto"
           >
             <Lock className="w-4 h-4 text-blue-200" />
             <span>Take Me to Client Portal</span>
@@ -159,7 +159,7 @@ export default function Home() {
 
           <button
             onClick={() => setShowApplyModal(true)}
-            className="flex h-14 items-center justify-center gap-3 rounded-full glass border border-white/20 hover:border-blue-500/50 px-8 text-white font-semibold text-sm transition-all hover:bg-white/10 hover:scale-105"
+            className="flex h-12 sm:h-14 items-center justify-center gap-2.5 sm:gap-3 rounded-full glass border border-white/20 hover:border-blue-500/50 px-6 sm:px-8 text-white font-semibold text-xs sm:text-sm transition-all hover:bg-white/10 hover:scale-105 w-full sm:w-auto"
           >
             <Calendar className="w-4 h-4 text-emerald-400" />
             <span>Apply for Access & Consultation</span>
@@ -171,26 +171,26 @@ export default function Home() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.3, ease: 'easeOut' }}
-          className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-4xl pt-8 border-t border-white/10"
+          className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4 w-full max-w-4xl pt-6 sm:pt-8 border-t border-white/10"
         >
-          <div className="p-6 glass-card rounded-2xl border border-white/10 text-center">
-            <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">Fund Net AUM</span>
-            <span className="text-2xl sm:text-3xl font-bold text-white font-mono">$48.6M+</span>
+          <div className="p-3.5 sm:p-6 glass-card rounded-2xl border border-white/10 text-center">
+            <span className="text-[10px] sm:text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">Fund Net AUM</span>
+            <span className="text-xl sm:text-3xl font-bold text-white font-mono">$48.6M+</span>
           </div>
 
-          <div className="p-6 glass-card rounded-2xl border border-white/10 text-center">
-            <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">Target Annual Yield</span>
-            <span className="text-2xl sm:text-3xl font-bold text-emerald-400 font-mono">+24.8% APY</span>
+          <div className="p-3.5 sm:p-6 glass-card rounded-2xl border border-white/10 text-center">
+            <span className="text-[10px] sm:text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">Target Annual Yield</span>
+            <span className="text-xl sm:text-3xl font-bold text-emerald-400 font-mono">+24.8% APY</span>
           </div>
 
-          <div className="p-6 glass-card rounded-2xl border border-white/10 text-center">
-            <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">Capital Protection</span>
-            <span className="text-2xl sm:text-3xl font-bold text-blue-400 font-mono">Delta 1.00</span>
+          <div className="p-3.5 sm:p-6 glass-card rounded-2xl border border-white/10 text-center">
+            <span className="text-[10px] sm:text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">Capital Protection</span>
+            <span className="text-xl sm:text-3xl font-bold text-blue-400 font-mono">Delta 1.00</span>
           </div>
 
-          <div className="p-6 glass-card rounded-2xl border border-white/10 text-center">
-            <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">Investor Whitelist</span>
-            <span className="text-2xl sm:text-3xl font-bold text-purple-400 font-mono">Approval Req.</span>
+          <div className="p-3.5 sm:p-6 glass-card rounded-2xl border border-white/10 text-center">
+            <span className="text-[10px] sm:text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">Investor Whitelist</span>
+            <span className="text-xl sm:text-3xl font-bold text-purple-400 font-mono">Approval Req.</span>
           </div>
         </motion.div>
 
@@ -252,15 +252,15 @@ export default function Home() {
 
       {/* Modal: Whitelist Application & Consultation Request with 2-Step Email Verification */}
       {showApplyModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="glass-card rounded-3xl p-8 max-w-lg w-full space-y-6 border border-white/10 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+          <div className="glass-card rounded-2xl sm:rounded-3xl p-5 sm:p-8 max-w-lg w-full space-y-5 sm:space-y-6 border border-white/10 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
               <div>
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                  <Sparkles className="w-4 sm:w-5 h-4 sm:h-5 text-emerald-400" />
                   {applyStep === 'verify' ? 'Confirm Email Verification' : applyStep === 'done' ? 'Application Confirmed' : 'Apply for Fund Whitelist Access'}
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-[11px] sm:text-xs text-gray-400 mt-1">
                   {applyStep === 'verify' 
                     ? `Enter the 6-digit code sent to ${formData.email}` 
                     : applyStep === 'done' 

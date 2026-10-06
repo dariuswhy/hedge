@@ -37,27 +37,28 @@ export default function PDFStatementModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       {/* Modal Container */}
-      <div className="glass-card rounded-3xl max-w-3xl w-full border border-white/10 shadow-2xl overflow-hidden my-8 animate-in fade-in">
+      <div className="glass-card rounded-2xl sm:rounded-3xl max-w-3xl w-full border border-white/10 shadow-2xl overflow-hidden my-4 sm:my-8 max-h-[92vh] flex flex-col animate-in fade-in">
         
         {/* Top Control Bar (Non-printable) */}
-        <div className="p-4 bg-black/60 border-b border-white/10 flex items-center justify-between print:hidden">
+        <div className="p-3.5 sm:p-4 bg-black/60 border-b border-white/10 flex items-center justify-between print:hidden shrink-0">
           <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-blue-400" />
-            <span className="text-sm font-semibold text-white">Official Institutional Portfolio Statement</span>
+            <Shield className="w-4 sm:w-5 h-4 sm:h-5 text-blue-400" />
+            <span className="text-xs sm:text-sm font-semibold text-white truncate">Institutional Statement</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={handlePrint}
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-2 transition-all shadow-lg"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 sm:gap-2 transition-all shadow-lg"
             >
-              <Printer className="w-4 h-4" />
-              Print / Save as PDF
+              <Printer className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Print / Save as PDF</span>
+              <span className="sm:hidden">Print PDF</span>
             </button>
             <button
               onClick={onClose}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 flex items-center justify-center text-sm font-bold"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 flex items-center justify-center text-xs sm:text-sm font-bold"
             >
               ✕
             </button>
@@ -65,27 +66,27 @@ export default function PDFStatementModal({
         </div>
 
         {/* Printable PDF Statement Body */}
-        <div ref={printRef} className="p-8 sm:p-12 bg-[#090d16] text-white font-sans space-y-8 print:p-0 print:bg-white print:text-black">
+        <div ref={printRef} className="p-4 sm:p-8 md:p-12 bg-[#090d16] text-white font-sans space-y-6 sm:space-y-8 print:p-0 print:bg-white print:text-black overflow-y-auto">
           
           {/* Statement Header Banner */}
-          <div className="flex items-start justify-between border-b border-white/10 print:border-gray-300 pb-6">
+          <div className="flex flex-col sm:flex-row items-start justify-between gap-4 border-b border-white/10 print:border-gray-300 pb-4 sm:pb-6">
             <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg">
+              <div className="flex items-center gap-2.5 sm:gap-3 mb-2">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shrink-0">
                   ▲
                 </div>
                 <div>
-                  <span className="text-2xl font-bold tracking-tight text-white print:text-black">
+                  <span className="text-xl sm:text-2xl font-bold tracking-tight text-white print:text-black">
                     HEDGE<span className="text-blue-500">CAPITAL</span>
                   </span>
-                  <span className="block text-[10px] uppercase font-mono tracking-widest text-gray-400 print:text-gray-600">
+                  <span className="block text-[9px] sm:text-[10px] uppercase font-mono tracking-widest text-gray-400 print:text-gray-600">
                     Quantitative Asset Management
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="text-right font-mono text-xs text-gray-400 print:text-gray-600 space-y-1">
+            <div className="text-left sm:text-right font-mono text-[11px] sm:text-xs text-gray-400 print:text-gray-600 space-y-0.5 sm:space-y-1">
               <div><strong className="text-white print:text-black">Statement ID:</strong> {statementId}</div>
               <div><strong className="text-white print:text-black">Date Generated:</strong> {statementDate}</div>
               <div><strong className="text-white print:text-black">Account Status:</strong> Verified Active</div>

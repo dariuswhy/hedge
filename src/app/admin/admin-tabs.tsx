@@ -337,17 +337,17 @@ export default function AdminTabs({
   ]
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8 items-start w-full">
-      {/* Left Sidebar Navigation */}
-      <aside className="w-full lg:w-64 shrink-0 glass-card rounded-3xl p-4 border border-white/10 space-y-2 lg:sticky lg:top-28 z-20 shadow-2xl">
-        <div className="px-3 py-2 mb-2 border-b border-white/10 pb-4">
+    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start w-full">
+      {/* Left Sidebar Navigation - Horizontal Scrollable on Mobile, Sticky Sidebar on Desktop */}
+      <aside className="w-full lg:w-64 shrink-0 glass-card rounded-2xl lg:rounded-3xl p-2.5 lg:p-4 border border-white/10 lg:sticky lg:top-28 z-20 shadow-2xl">
+        <div className="hidden lg:block px-3 py-2 mb-2 border-b border-white/10 pb-4">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase">Navigation Menu</span>
           </div>
         </div>
 
-        <nav className="space-y-1.5">
+        <nav className="flex lg:flex-col gap-1.5 lg:space-y-1.5 overflow-x-auto no-scrollbar pb-0.5 lg:pb-0">
           {tabs.map((tab) => {
             const Icon = tab.icon
             const isActive = activeTab === tab.id
@@ -355,7 +355,7 @@ export default function AdminTabs({
               <button
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id as any)}
-                className={`relative w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-semibold tracking-wide transition-all duration-300 ${
+                className={`relative flex items-center justify-between px-3.5 py-2.5 lg:py-3 rounded-xl lg:rounded-2xl text-xs font-semibold tracking-wide transition-all duration-300 shrink-0 lg:w-full whitespace-nowrap ${
                   isActive
                     ? 'text-white shadow-lg'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -364,11 +364,11 @@ export default function AdminTabs({
                 {isActive && (
                   <motion.div
                     layoutId="adminSidebarGlow"
-                    className="absolute inset-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-2xl"
+                    className="absolute inset-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-xl lg:rounded-2xl"
                     transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center gap-2.5 min-w-0 truncate">
+                <span className="relative z-10 flex items-center gap-2 lg:gap-2.5 min-w-0">
                   <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-gray-400'}`} />
                   <span className="truncate">{tab.label}</span>
                 </span>
@@ -405,63 +405,62 @@ export default function AdminTabs({
           {/* TAB 1: OVERVIEW & ANALYTICS */}
           {activeTab === 'overview' && (
             <div className="space-y-8">
-              {/* Financial KPI Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-                <div className="glass-card rounded-3xl p-6 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 transition-transform duration-500">
-                    <DollarSign className="w-20 h-20 text-blue-400" />
+              {/* Financial KPI Cards - 2x2 on Mobile, 4x1 on Desktop */}
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5 sm:gap-6">
+                <div className="glass-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 sm:p-6 opacity-10 group-hover:scale-110 transition-transform duration-500">
+                    <DollarSign className="w-12 sm:w-20 h-12 sm:h-20 text-blue-400" />
                   </div>
-                  <p className="text-blue-300 text-xs font-semibold uppercase tracking-widest mb-2">Total Fund AUM</p>
-                  <p className="text-2xl xl:text-3xl font-bold text-white tracking-tight font-mono whitespace-nowrap">
+                  <p className="text-blue-300 text-[10px] sm:text-xs font-semibold uppercase tracking-wider sm:tracking-widest mb-1 sm:mb-2 truncate">Total Fund AUM</p>
+                  <p className="text-lg sm:text-2xl xl:text-3xl font-bold text-white tracking-tight font-mono truncate">
                     ${totalFundValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
-                  <div className="mt-4 flex items-center gap-2 text-xs text-blue-200/70">
-                    <Activity className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Real-time aggregated asset value</span>
+                  <div className="mt-2 sm:mt-4 flex items-center gap-1.5 text-[10px] sm:text-xs text-blue-200/70">
+                    <Activity className="w-3 h-3 text-blue-400 shrink-0" />
+                    <span className="truncate">Aggregated valuation</span>
                   </div>
                 </div>
 
-                <div className="glass-card rounded-3xl p-6 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 transition-transform duration-500">
-                    <TrendingUp className="w-20 h-20 text-emerald-400" />
+                <div className="glass-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 sm:p-6 opacity-10 group-hover:scale-110 transition-transform duration-500">
+                    <TrendingUp className="w-12 sm:w-20 h-12 sm:h-20 text-emerald-400" />
                   </div>
-                  <p className="text-emerald-300 text-xs font-semibold uppercase tracking-widest mb-2">Fund Net Profit</p>
-                  <p className="text-2xl xl:text-3xl font-bold text-emerald-400 tracking-tight font-mono whitespace-nowrap">
+                  <p className="text-emerald-300 text-[10px] sm:text-xs font-semibold uppercase tracking-wider sm:tracking-widest mb-1 sm:mb-2 truncate">Fund Net Profit</p>
+                  <p className="text-lg sm:text-2xl xl:text-3xl font-bold text-emerald-400 tracking-tight font-mono truncate">
                     +${fundProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
-                  <div className="mt-4 flex items-center gap-2 text-xs text-emerald-200/70">
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold text-[10px]">
-                      +{fundRoiPercent.toFixed(2)}% ROI
+                  <div className="mt-2 sm:mt-4 flex items-center gap-1.5 text-[10px] sm:text-xs text-emerald-200/70">
+                    <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold text-[9px] sm:text-[10px] truncate">
+                      +{fundRoiPercent.toFixed(1)}% ROI
                     </span>
-                    <span>vs principal capital</span>
                   </div>
                 </div>
 
-                <div className="glass-card rounded-3xl p-6 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 transition-transform duration-500">
-                    <Users className="w-20 h-20 text-purple-400" />
+                <div className="glass-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 sm:p-6 opacity-10 group-hover:scale-110 transition-transform duration-500">
+                    <Users className="w-12 sm:w-20 h-12 sm:h-20 text-purple-400" />
                   </div>
-                  <p className="text-purple-300 text-xs font-semibold uppercase tracking-widest mb-2">Active Investors</p>
-                  <p className="text-2xl xl:text-3xl font-bold text-white tracking-tight font-mono">
+                  <p className="text-purple-300 text-[10px] sm:text-xs font-semibold uppercase tracking-wider sm:tracking-widest mb-1 sm:mb-2 truncate">Active Investors</p>
+                  <p className="text-lg sm:text-2xl xl:text-3xl font-bold text-white tracking-tight font-mono">
                     {clients.length}
                   </p>
-                  <div className="mt-4 flex items-center gap-2 text-xs text-purple-200/70">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Verified platform accounts</span>
+                  <div className="mt-2 sm:mt-4 flex items-center gap-1.5 text-[10px] sm:text-xs text-purple-200/70">
+                    <CheckCircle2 className="w-3 h-3 text-purple-400 shrink-0" />
+                    <span className="truncate">Verified accounts</span>
                   </div>
                 </div>
 
-                <div className="glass-card rounded-3xl p-6 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 transition-transform duration-500">
-                    <Layers className="w-20 h-20 text-amber-400" />
+                <div className="glass-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 sm:p-6 opacity-10 group-hover:scale-110 transition-transform duration-500">
+                    <Layers className="w-12 sm:w-20 h-12 sm:h-20 text-amber-400" />
                   </div>
-                  <p className="text-amber-300 text-xs font-semibold uppercase tracking-widest mb-2">Hedge Accounts</p>
-                  <p className="text-2xl xl:text-3xl font-bold text-white tracking-tight font-mono">
+                  <p className="text-amber-300 text-[10px] sm:text-xs font-semibold uppercase tracking-wider sm:tracking-widest mb-1 sm:mb-2 truncate">Hedge Accounts</p>
+                  <p className="text-lg sm:text-2xl xl:text-3xl font-bold text-white tracking-tight font-mono">
                     {hedgePools.length}
                   </p>
-                  <div className="mt-4 flex items-center gap-2 text-xs text-amber-200/70">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Active multi-investor pools</span>
+                  <div className="mt-2 sm:mt-4 flex items-center gap-1.5 text-[10px] sm:text-xs text-amber-200/70">
+                    <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+                    <span className="truncate">Active pools</span>
                   </div>
                 </div>
               </div>

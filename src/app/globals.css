@@ -111,3 +111,12 @@ body {
 .animate-pulse-glow {
   animation: pulseGlow 4s infinite ease-in-out;
 }
+
+/* Hide scrollbar for clean mobile horizontal carousels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

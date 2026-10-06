@@ -48,13 +48,13 @@ export default function LoginPage() {
           <span className="text-xl font-medium tracking-wide text-white">Hedge<span className="text-blue-500 font-bold">Capital</span></span>
         </Link>
 
-        <div className="glass-card p-10 rounded-3xl relative">
-          <div className="mb-8 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/5 border border-white/10 mb-6 shadow-inner">
-              <Lock className="w-8 h-8 text-blue-400" />
+        <div className="glass-card p-6 sm:p-10 rounded-2xl sm:rounded-3xl relative">
+          <div className="mb-6 sm:mb-8 text-center">
+            <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/5 border border-white/10 mb-4 sm:mb-6 shadow-inner">
+              <Lock className="w-7 h-7 sm:w-8 sm:h-8 text-blue-400" />
             </div>
-            <h1 className="text-3xl font-light tracking-tight text-white mb-2">Client Portal</h1>
-            <p className="text-sm text-gray-400">Sign in to access your portfolio</p>
+            <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-white mb-1.5 sm:mb-2">Client Portal</h1>
+            <p className="text-xs sm:text-sm text-gray-400">Sign in to access your portfolio</p>
           </div>
 
           <form action={formAction} className="space-y-6">

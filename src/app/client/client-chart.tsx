@@ -18,40 +18,48 @@ export default function ClientChart({ data }: { data: any[] }) {
     date: format(new Date(item.created_at), 'MMM dd, yyyy')
   }))
 
+  const formatCurrencyCompact = (value: number) => {
+    if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
+    if (value >= 1_000) return `$${(value / 1_000).toFixed(0)}k`
+    return `$${value}`
+  }
+
   return (
     <div className="h-full w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={formattedData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+        <LineChart data={formattedData} margin={{ top: 10, right: 10, bottom: 0, left: -15 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
           <XAxis 
             dataKey="date" 
             stroke="#ffffff50" 
-            fontSize={12} 
+            fontSize={11} 
             tickLine={false} 
             axisLine={false}
+            tickMargin={8}
           />
           <YAxis 
             stroke="#ffffff50" 
-            fontSize={12} 
+            fontSize={11} 
             tickLine={false} 
             axisLine={false}
-            tickFormatter={(value) => `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            tickFormatter={(value) => formatCurrencyCompact(Number(value))}
+            width={45}
           />
           <Tooltip 
-            contentStyle={{ backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }}
+            contentStyle={{ backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(12px)', borderColor: 'rgba(255,255,255,0.12)', borderRadius: '12px', fontSize: '12px' }}
             itemStyle={{ color: '#fff' }}
             formatter={(value: any) => [
               `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              'Current Value'
+              'Valuation'
             ]}
           />
           <Line 
             type="monotone" 
             dataKey="current_value" 
             stroke="#3b82f6" 
-            strokeWidth={3}
-            dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
-            activeDot={{ r: 6, stroke: '#fff' }}
+            strokeWidth={2.5}
+            dot={{ fill: '#3b82f6', strokeWidth: 1.5, r: 3 }}
+            activeDot={{ r: 5, stroke: '#fff' }}
           />
         </LineChart>
       </ResponsiveContainer>

@@ -79,7 +79,7 @@ export default function ClientHedgePools({ pools, currentUserId }: ClientHedgePo
       </div>
 
       {/* Pool Selector Tabs */}
-      <div className="flex items-center gap-3 overflow-x-auto pb-2 border-b border-white/10">
+      <div className="flex items-center gap-2.5 sm:gap-3 overflow-x-auto pb-2 border-b border-white/10 no-scrollbar">
         {pools.map((p) => {
           const isSelected = p.id === activePool?.id
           const m = p.members?.find(mem => mem.user_id === currentUserId) || p.members?.[0]
@@ -87,21 +87,21 @@ export default function ClientHedgePools({ pools, currentUserId }: ClientHedgePo
             <button
               key={p.id}
               onClick={() => setSelectedPoolId(p.id)}
-              className={`px-5 py-3 rounded-2xl text-left transition-all min-w-[220px] border ${
+              className={`px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-left transition-all min-w-[170px] sm:min-w-[220px] border shrink-0 ${
                 isSelected
                   ? 'bg-gradient-to-br from-blue-900/40 to-indigo-900/40 border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.25)]'
                   : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
               }`}
             >
-              <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center justify-between gap-1.5 mb-1">
                 <span className={`text-xs font-bold truncate ${isSelected ? 'text-blue-300' : 'text-white'}`}>
                   {p.name}
                 </span>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
+                <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full font-mono flex items-center gap-0.5">
                   <CheckCircle2 className="w-2.5 h-2.5" /> Active
                 </span>
               </div>
-              <div className="text-sm font-semibold text-white font-mono">
+              <div className="text-xs sm:text-sm font-semibold text-white font-mono">
                 ${Number(m?.current_member_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             </button>
@@ -110,79 +110,79 @@ export default function ClientHedgePools({ pools, currentUserId }: ClientHedgePo
       </div>
 
       {activePool && (
-        <div className="glass-card rounded-3xl p-8 space-y-8">
+        <div className="glass-card rounded-2xl sm:rounded-3xl p-4 sm:p-8 space-y-6 sm:space-y-8">
           {/* Header Card */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-white/10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 pb-4 sm:pb-6 border-b border-white/10">
             <div>
               <div className="flex items-center gap-2">
-                <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                <span className="px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
                   {activePool.strategy}
                 </span>
-                <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                <span className="px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 border border-blue-500/20 text-blue-400">
                   Status: {activePool.status}
                 </span>
               </div>
-              <h3 className="text-2xl font-bold text-white mt-2">{activePool.name}</h3>
-              <p className="text-gray-400 text-sm mt-1">{activePool.description}</p>
+              <h3 className="text-xl sm:text-2xl font-bold text-white mt-2">{activePool.name}</h3>
+              <p className="text-gray-400 text-xs sm:text-sm mt-1">{activePool.description}</p>
             </div>
             <div className="text-left md:text-right">
-              <span className="text-xs text-gray-400 block uppercase font-semibold">Target Fund Yield</span>
-              <span className="text-2xl font-bold text-emerald-400">{activePool.target_return}</span>
+              <span className="text-[11px] sm:text-xs text-gray-400 block uppercase font-semibold">Target Fund Yield</span>
+              <span className="text-xl sm:text-2xl font-bold text-emerald-400">{activePool.target_return}</span>
             </div>
           </div>
 
-          {/* User's Personal Performance Highlights (No Fund Total Or % Split Excluded) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
-              <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">My Position Value</span>
-              <span className="text-2xl font-bold text-white font-mono">
+          {/* User's Personal Performance Highlights - Compact 2-col on Mobile, 4-col on Desktop */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-6">
+            <div className="p-3.5 sm:p-4 bg-black/40 rounded-2xl border border-white/5">
+              <span className="text-[10px] sm:text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">Position Value</span>
+              <span className="text-lg sm:text-2xl font-bold text-white font-mono truncate block">
                 ${userCurrentVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
-              <span className="text-[10px] text-emerald-400 block mt-1">Live Marked-to-Market</span>
+              <span className="text-[9px] sm:text-[10px] text-emerald-400 block mt-1">Marked-to-Market</span>
             </div>
 
-            <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
-              <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">My Allocated Principal</span>
-              <span className="text-2xl font-bold text-gray-300 font-mono">
+            <div className="p-3.5 sm:p-4 bg-black/40 rounded-2xl border border-white/5">
+              <span className="text-[10px] sm:text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">Allocated Principal</span>
+              <span className="text-lg sm:text-2xl font-bold text-gray-300 font-mono truncate block">
                 ${userAllocated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
-              <span className="text-[10px] text-gray-500 block mt-1">Dedicated Invested Capital</span>
+              <span className="text-[9px] sm:text-[10px] text-gray-500 block mt-1">Invested Capital</span>
             </div>
 
-            <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
-              <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">My Net Profit</span>
-              <span className={`text-2xl font-bold font-mono ${userProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            <div className="p-3.5 sm:p-4 bg-black/40 rounded-2xl border border-white/5">
+              <span className="text-[10px] sm:text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">Net Profit</span>
+              <span className={`text-lg sm:text-2xl font-bold font-mono truncate block ${userProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                 {userProfit >= 0 ? '+' : ''}${userProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
-              <span className="text-[10px] text-gray-500 block mt-1">Cumulative Generated Gain</span>
+              <span className="text-[9px] sm:text-[10px] text-gray-500 block mt-1">Realized Gain</span>
             </div>
 
-            <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
-              <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">My Return on Investment</span>
-              <span className={`text-2xl font-bold font-mono ${userRoiPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            <div className="p-3.5 sm:p-4 bg-black/40 rounded-2xl border border-white/5">
+              <span className="text-[10px] sm:text-xs text-gray-400 font-semibold uppercase tracking-wider block mb-1">My Net ROI</span>
+              <span className={`text-lg sm:text-2xl font-bold font-mono truncate block ${userRoiPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                 {userRoiPct >= 0 ? '+' : ''}{userRoiPct.toFixed(2)}%
               </span>
-              <span className="text-[10px] text-gray-500 block mt-1">Net Realized ROI</span>
+              <span className="text-[9px] sm:text-[10px] text-gray-500 block mt-1">Return Ratio</span>
             </div>
           </div>
 
           {/* Active Fund Trades & Execution Log */}
           <div className="space-y-4 pt-4 border-t border-white/10">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
               <div>
-                <h4 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-400" />
+                <h4 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
+                  <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
                   Active Trades & Execution Log
                 </h4>
-                <p className="text-xs text-gray-400">
+                <p className="text-[11px] sm:text-xs text-gray-400">
                   Real-time audit log of active positions and trade executions managed by fund managers.
                 </p>
               </div>
             </div>
 
             {allTrades.length > 0 && (
-              <div className="space-y-3 p-3.5 bg-black/40 rounded-2xl border border-white/10">
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="space-y-3 p-3 sm:p-3.5 bg-black/40 rounded-2xl border border-white/10">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
                   <div className="relative flex-1">
                     <Search className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
@@ -197,7 +197,7 @@ export default function ClientHedgePools({ pools, currentUserId }: ClientHedgePo
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                     {[
                       { id: 'ALL', label: 'All' },
                       { id: 'TRADES', label: 'Trades' },
@@ -235,7 +235,45 @@ export default function ClientHedgePools({ pools, currentUserId }: ClientHedgePo
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30">
+                {/* Mobile Trade Execution Cards (< 768px) */}
+                <div className="md:hidden space-y-2.5">
+                  {paginatedTrades.map((t) => {
+                    const isProfit = Number(t.pnl_amount) >= 0
+                    return (
+                      <div key={t.id} className="p-3.5 bg-black/40 border border-white/10 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white text-sm">{t.asset_symbol}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                              t.trade_type === 'BUY_LONG'
+                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                : t.trade_type === 'PROFIT_TAKE'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            }`}>
+                              {t.trade_type}
+                            </span>
+                          </div>
+                          <span className={`font-mono font-bold text-sm ${isProfit ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {isProfit ? '+' : ''}${Number(t.pnl_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-gray-400 font-mono pt-1 border-t border-white/5">
+                          <span>{t.created_at ? new Date(t.created_at).toLocaleDateString() : 'Recent'}</span>
+                          <span>Entry/Exit: {t.entry_price ? `$${Number(t.entry_price).toFixed(2)}` : '-'} / {t.exit_price ? `$${Number(t.exit_price).toFixed(2)}` : '-'}</span>
+                        </div>
+                        {t.notes && (
+                          <p className="text-[10px] text-gray-500 italic truncate" title={t.notes}>
+                            {t.notes}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Desktop Trades Table (>= 768px) */}
+                <div className="hidden md:block overflow-x-auto rounded-2xl border border-white/10 bg-black/30">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-white/5 text-gray-400 uppercase tracking-wider font-semibold border-b border-white/10">
                       <tr>
@@ -261,7 +299,7 @@ export default function ClientHedgePools({ pools, currentUserId }: ClientHedgePo
                             <td className="py-3 px-4 font-sans">
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 t.trade_type === 'BUY_LONG'
-                                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                                   : t.trade_type === 'PROFIT_TAKE'
                                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                                   : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
